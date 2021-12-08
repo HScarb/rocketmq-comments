@@ -24,12 +24,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * 用来做线程之间异步通知
+ */
 public class WaitNotifyObject {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-
+    // 是否已经被Notify过，广播模式
     protected final ConcurrentHashMap<Long/* thread id */, AtomicBoolean/* notified */> waitingThreadTable =
         new ConcurrentHashMap<Long, AtomicBoolean>(16);
-
+    // 是否已经被Notify过
     protected AtomicBoolean hasNotified = new AtomicBoolean(false);
 
     public void wakeup() {
@@ -65,6 +68,9 @@ public class WaitNotifyObject {
     protected void onWaitEnd() {
     }
 
+    /**
+     * 广播方式唤醒
+     */
     public void wakeupAll() {
         boolean needNotify = false;
         for (Map.Entry<Long,AtomicBoolean> entry : this.waitingThreadTable.entrySet()) {
@@ -78,7 +84,10 @@ public class WaitNotifyObject {
             }
         }
     }
-
+    
+    /**
+     * 多个线程调用wait
+     */
     public void allWaitForRunning(long interval) {
         long currentThreadId = Thread.currentThread().getId();
         AtomicBoolean notified = this.waitingThreadTable.computeIfAbsent(currentThreadId, k -> new AtomicBoolean(false));
