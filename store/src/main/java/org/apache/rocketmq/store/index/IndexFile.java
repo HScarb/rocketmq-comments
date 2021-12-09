@@ -27,6 +27,10 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.MappedFile;
 
+
+/**
+ * 存储具体消息索引信息的文件
+ */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static int hashSlotSize = 4;
@@ -81,6 +85,9 @@ public class IndexFile {
         }
     }
 
+    /**
+     * 当前索引文件是否写满
+     */
     public boolean isWriteFull() {
         return this.indexHeader.getIndexCount() >= this.indexNum;
     }
@@ -89,6 +96,10 @@ public class IndexFile {
         return this.mappedFile.destroy(intervalForcibly);
     }
 
+    /**
+     * 向索引文件插入新的索引项
+     * 如果返回false，表示需要创建新的索引文件
+     */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
         if (this.indexHeader.getIndexCount() < this.indexNum) {
             int keyHash = indexKeyHashMethod(key);
