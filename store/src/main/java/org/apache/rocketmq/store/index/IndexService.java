@@ -60,17 +60,24 @@ public class IndexService {
             StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
     }
 
+    /**
+     * 重新加载索引文件
+     *
+     * @param lastExitOK 上次是否是正常退出
+     * @return 加载是否成功
+     */
     public boolean load(final boolean lastExitOK) {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
         if (files != null) {
-            // ascending order
+            // ascending order, 将索引文件按照创建时间升序排序
             Arrays.sort(files);
             for (File file : files) {
+                // 依次加载每个索引文件
                 try {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
                     f.load();
-
+                    // 如果上一次是异常退出，则删除check point之后的所有索引文件
                     if (!lastExitOK) {
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
                             .getIndexMsgTimestamp()) {
@@ -242,6 +249,7 @@ public class IndexService {
                 return;
             }
 
+            // 如果是事务消息的回滚消息，不需要创建索引，直接返回
             final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
             switch (tranType) {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
@@ -253,6 +261,7 @@ public class IndexService {
             }
 
             if (req.getUniqKey() != null) {
+                // 创建UniqueKey的索引，也就是msgId的索引
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
                     log.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());
@@ -260,6 +269,7 @@ public class IndexService {
                 }
             }
 
+            // 创建消息key的索引，这里key可以有多个
             if (keys != null && keys.length() > 0) {
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
@@ -336,8 +346,10 @@ public class IndexService {
         // 先尝试使用读锁
         {
             this.readWriteLock.readLock().lock();
+            // 判断文件列表是否为空
             if (!this.indexFileList.isEmpty()) {
                 IndexFile tmp = this.indexFileList.get(this.indexFileList.size() - 1);
+                // 判断最后一个文件是否写满
                 if (!tmp.isWriteFull()) {
                     indexFile = tmp;
                 } else {
@@ -350,7 +362,7 @@ public class IndexService {
             this.readWriteLock.readLock().unlock();
         }
 
-        // 如果没找到或者最后一个文件写满了，使用写锁创建文件
+        // 如果文件列表为空或者最后一个文件写满了，使用写锁创建文件
         if (indexFile == null) {
             try {
                 String fileName =
@@ -367,7 +379,7 @@ public class IndexService {
                 this.readWriteLock.writeLock().unlock();
             }
 
-            // 每创建一个新文件，之前文件要刷盘
+            // 每创建一个新文件，前一个文件异步刷盘
             if (indexFile != null) {
                 final IndexFile flushThisFile = prevIndexFile;
                 Thread flushThread = new Thread(new Runnable() {

@@ -101,9 +101,13 @@ public class IndexFile {
      * 如果返回false，表示需要创建新的索引文件
      */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
+        // 判断当前索引数量是否小于最大索引数量，如果小于则直接退出，说明需要创建新的索引文件
         if (this.indexHeader.getIndexCount() < this.indexNum) {
+            // 计算key的hash值
             int keyHash = indexKeyHashMethod(key);
+            // 获取hash槽位置（下标）。通过 keyHash % hashSlotNum 的方式再次哈希，这里会加大查询消息错误的概率。
             int slotPos = keyHash % this.hashSlotNum;
+            // 通过hash槽下表计算出hash槽的绝对位置
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
             FileLock fileLock = null;
@@ -112,6 +116,7 @@ public class IndexFile {
 
                 // fileLock = this.fileChannel.lock(absSlotPos, hashSlotSize,
                 // false);
+                // 通过hash槽绝对位置，获取hash槽的值，如果有值说明这个hash key已经存在，如果不存在则需要填入
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()) {
                     slotValue = invalidIndex;
@@ -129,15 +134,19 @@ public class IndexFile {
                     timeDiff = 0;
                 }
 
+                // 计算放置索引的绝对偏移量
                 int absIndexPos =
                     IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
                         + this.indexHeader.getIndexCount() * indexSize;
 
+                // 在链表头部插入最新的索引项
+                // 将索引存入文件，最后一个是指针，指向下一个链表元素
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
 
+                // 写入hash槽，每个hash槽的值是最新写入的索引文件的逻辑下标
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 
                 if (this.indexHeader.getIndexCount() <= 1) {
@@ -148,6 +157,7 @@ public class IndexFile {
                 if (invalidIndex == slotValue) {
                     this.indexHeader.incHashSlotCount();
                 }
+                // 更新索引文件头，索引项个数+1
                 this.indexHeader.incIndexCount();
                 this.indexHeader.setEndPhyOffset(phyOffset);
                 this.indexHeader.setEndTimestamp(storeTimestamp);
@@ -199,9 +209,20 @@ public class IndexFile {
         return result;
     }
 
+    /**
+     * 从该索引文件中根据key查找offsets
+     *
+     * @param phyOffsets offsets结果列表
+     * @param key 查找的key
+     * @param maxNum 最大返回结果数量
+     * @param begin 查找消息的开始时间
+     * @param end 查找消息的结束时间
+     * @param lock 查找时是否加锁（已废弃）
+     */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {
+            // 根据key的hash值计算hash槽的绝对位置
             int keyHash = indexKeyHashMethod(key);
             int slotPos = keyHash % this.hashSlotNum;
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
@@ -213,12 +234,13 @@ public class IndexFile {
                     // hashSlotSize, true);
                 }
 
+                // 获取hash槽的值
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 // if (fileLock != null) {
                 // fileLock.release();
                 // fileLock = null;
                 // }
-
+                // 如果该hash槽的值有效则查找，否则查找失败
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()
                     || this.indexHeader.getIndexCount() <= 1) {
                 } else {
