@@ -589,7 +589,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
      * 该方法调用线程池，因此，不会阻塞
      *
      * @param channel 通道
-     * @param request 客户端请求
+     * @param request Consumer拉取请求
      * @throws RemotingCommandException 当远程调用发生异常
      */
     public void executeRequestWhenWakeup(final Channel channel,
@@ -598,12 +598,14 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             @Override
             public void run() {
                 try {
+                    // 处理Consumer拉取请求，获取返回体
                     final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                     if (response != null) {
                         response.setOpaque(request.getOpaque());
                         response.markResponseType();
                         try {
+                            // 将返回体写入channel，返回给Consumer
                             channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
                                 @Override
                                 public void operationComplete(ChannelFuture future) throws Exception {
@@ -626,6 +628,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 }
             }
         };
+        // 异步执行请求处理和返回
         this.brokerController.getPullMessageExecutor().submit(new RequestTask(run, channel, request));
     }
 

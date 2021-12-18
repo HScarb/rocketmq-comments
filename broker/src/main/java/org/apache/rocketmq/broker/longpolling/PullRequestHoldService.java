@@ -57,7 +57,9 @@ public class PullRequestHoldService extends ServiceThread {
      * @param pullRequest 拉取消息请求
      */
     public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
+        // 根据topic和queueId构造map的key
         String key = this.buildKey(topic, queueId);
+        // map的key如果为空，创建一个空的request队列，填充key和value
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (null == mpr) {
             mpr = new ManyPullRequest();
@@ -84,6 +86,7 @@ public class PullRequestHoldService extends ServiceThread {
         log.info("{} service started", this.getServiceName());
         while (!this.isStopped()) {
             try {
+                // 等待一定时间
                 if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {
                     // 开启长轮询，每5s判断一次消息是否到达
                     this.waitForRunning(5 * 1000);
@@ -93,6 +96,7 @@ public class PullRequestHoldService extends ServiceThread {
                 }
 
                 long beginLockTimestamp = this.systemClock.now();
+                // 检查是否有消息到达，可以唤醒挂起的请求
                 this.checkHoldRequest();
                 long costTime = this.systemClock.now() - beginLockTimestamp;
                 if (costTime > 5 * 1000) {
@@ -147,22 +151,24 @@ public class PullRequestHoldService extends ServiceThread {
 
     public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset, final Long tagsCode,
         long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
+        // 根据topic和queueId从容器中取出挂起的拉取请求列表
         String key = this.buildKey(topic, queueId);
         ManyPullRequest mpr = this.pullRequestTable.get(key);
         if (mpr != null) {
-            // 获取挂起的批量PullRequest
+            // 获取挂起的拉取请求列表
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
-                // 需要继续Hold的pullRequest列表
+                // 预先定义需要继续挂起的拉取请求列表
                 List<PullRequest> replayList = new ArrayList<PullRequest>();
 
                 for (PullRequest request : requestList) {
                     long newestOffset = maxOffset;
+                    // 从store中获取该队列消息的最大offset
                     if (newestOffset <= request.getPullFromThisOffset()) {
                         newestOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                     }
 
-                    // 消费队列offset比Consumer请求的offset大
+                    // 消费队列最大offset比消费者拉取请求的offset大，说明有新的消息可以被拉取
                     if (newestOffset > request.getPullFromThisOffset()) {
                         // 消息过滤匹配
                         boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
@@ -174,7 +180,7 @@ public class PullRequestHoldService extends ServiceThread {
 
                         if (match) {
                             try {
-                                // 会调用PullMessageProcessor#processRequest方法拉取消息，然后将结果返回给Consumer
+                                // 会调用PullMessageProcessor#processRequest方法拉取消息，然后将结果返回给消费者
                                 this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                     request.getRequestCommand());
                             } catch (Throwable e) {
