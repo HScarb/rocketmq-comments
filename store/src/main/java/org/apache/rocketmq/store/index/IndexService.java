@@ -349,7 +349,7 @@ public class IndexService {
             // 判断文件列表是否为空
             if (!this.indexFileList.isEmpty()) {
                 IndexFile tmp = this.indexFileList.get(this.indexFileList.size() - 1);
-                // 判断最后一个文件是否写满
+                // 判断最后一个文件是否写满，如果写满了，indexFile变量仍然置为空
                 if (!tmp.isWriteFull()) {
                     indexFile = tmp;
                 } else {
@@ -362,7 +362,7 @@ public class IndexService {
             this.readWriteLock.readLock().unlock();
         }
 
-        // 如果文件列表为空或者最后一个文件写满了，使用写锁创建文件
+        // 如果文件列表为空或者最后一个文件写满了，使用写锁创建文件，然后将写满的文件刷盘
         if (indexFile == null) {
             try {
                 String fileName =
@@ -397,6 +397,11 @@ public class IndexService {
         return indexFile;
     }
 
+    /**
+     * 索引文件刷盘，在一个文件写满后调用
+     * 
+     * @param f 需要刷盘的索引文件
+     */
     public void flush(final IndexFile f) {
         if (null == f)
             return;
@@ -407,8 +412,10 @@ public class IndexService {
             indexMsgTimestamp = f.getEndTimestamp();
         }
 
+        // 索引文件刷盘
         f.flush();
 
+        // checkpoint文件刷盘
         if (indexMsgTimestamp > 0) {
             this.defaultMessageStore.getStoreCheckpoint().setIndexMsgTimestamp(indexMsgTimestamp);
             this.defaultMessageStore.getStoreCheckpoint().flush();
