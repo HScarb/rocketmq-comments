@@ -444,19 +444,22 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
                     // 长轮询
+                    // 如果当前没有消息，并且本次拉取是由客户端触发，而非挂起请求触发的话，那么挂起当前拉取请求
                     if (brokerAllowSuspend && hasSuspendFlag) {
+                        // 最大挂起时间，push模式固定15s，pull模式固定20s
                         long pollingTimeMills = suspendTimeoutMillisLong;
                         if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                            // 如果不启用长轮询，则使用短轮询，1s检查一次是否有新消息。默认启用长轮询
                             pollingTimeMills = this.brokerController.getBrokerConfig().getShortPollingTimeMills();
                         }
-
+                        // 构造一个PullRequest并交给PullRequestHoldService线程
                         String topic = requestHeader.getTopic();
                         long offset = requestHeader.getQueueOffset();
                         int queueId = requestHeader.getQueueId();
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
                             this.brokerController.getMessageStore().now(), offset, subscriptionData, messageFilter);
                         this.brokerController.getPullRequestHoldService().suspendPullRequest(topic, queueId, pullRequest);
-                        response = null;
+                        response = null;    // 将相应置为空，意味着暂时不返回给客户端
                         break;
                     }
                     // 向Consumer返回应答
