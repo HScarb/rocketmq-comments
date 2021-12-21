@@ -368,6 +368,11 @@ public class RemotingCommand {
         }
     }
 
+    /**
+     * makeCustomHeaderToNet方法是将customHeader中定义的键值对参数写入extFields中
+     * 比如我们在测试用例中，写入了requestHeader.setCount(1);
+     *   requestHeader.setMessageTitle("Welcome");
+     */
     public void makeCustomHeaderToNet() {
         if (this.customHeader != null) {
             Field[] fields = getClazzFields(customHeader.getClass());

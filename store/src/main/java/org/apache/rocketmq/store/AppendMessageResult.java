@@ -102,6 +102,7 @@ public class AppendMessageResult {
     }
 
     public String getMsgId() {
+        // 4.9.1版本优化：msgId懒加载，第一次调用时才会执行计算msgId的方法，计算msgId
         if (msgId == null && msgIdSupplier != null) {
             msgId = msgIdSupplier.get();
         }
