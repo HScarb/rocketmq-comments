@@ -42,15 +42,22 @@ import org.apache.rocketmq.store.config.FlushDiskType;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 内存映射文件实现
+ */
 public class MappedFile extends ReferenceResource {
+    // 操作系统内存页大小，默认4kb
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-
+    // 当前JVM中映射的虚拟内存总大小
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
-
+    // 当前JVM中mmap句柄数量
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
+    // 当前文件写指针，写到什么位置
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
+    // 当前文件提交指针。如果开启transientStorePoolEnable，则数据会存储在TransientStorePool中，然后提交到内存映射ByteBuffer中，再写入磁盘
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    // 该指针之前的数据全部持久化到硬盘中
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
     protected int fileSize;
     protected FileChannel fileChannel;
@@ -59,7 +66,9 @@ public class MappedFile extends ReferenceResource {
      */
     protected ByteBuffer writeBuffer = null;
     protected TransientStorePool transientStorePool = null;
+    // 文件名
     private String fileName;
+    // 起始偏移量
     private long fileFromOffset;
     private File file;
     private MappedByteBuffer mappedByteBuffer;
@@ -272,14 +281,20 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
+     * 文件刷盘
+     *
+     * @param flushLeastPages 最少刷盘页数
      * @return The current flushed position
      */
     public int flush(final int flushLeastPages) {
         if (this.isAbleToFlush(flushLeastPages)) {
+            // 计数器+1
             if (this.hold()) {
+                // 写的位置
                 int value = getReadPosition();
 
                 try {
+                    // 强制刷盘
                     //We only append data to fileChannel or mappedByteBuffer, never both.
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
                         this.fileChannel.force(false);
@@ -291,6 +306,7 @@ public class MappedFile extends ReferenceResource {
                 }
 
                 this.flushedPosition.set(value);
+                // 计数器-1
                 this.release();
             } else {
                 log.warn("in flush, hold failed, flush offset = " + this.flushedPosition.get());
@@ -341,6 +357,11 @@ public class MappedFile extends ReferenceResource {
         }
     }
 
+    /**
+     *
+     * @param flushLeastPages
+     * @return
+     */
     private boolean isAbleToFlush(final int flushLeastPages) {
         int flush = this.flushedPosition.get();
         int write = getReadPosition();

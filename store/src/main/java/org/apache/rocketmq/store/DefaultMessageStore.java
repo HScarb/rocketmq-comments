@@ -1835,22 +1835,29 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * ConsumeQueue异步刷盘线程，将ConsumeQueue数据刷入磁盘。每隔1s运行一次doFlush
+     */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
         private long lastFlushTimestamp = 0;
 
         private void doFlush(int retryTimes) {
+            // 变量含义：如果大于0，则标识这次刷盘必须刷多少个page，如果=0，则有多少刷多少
             int flushConsumeQueueLeastPages = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueLeastPages();
 
+            // 程序退出时强制刷盘
             if (retryTimes == RETRY_TIMES_OVER) {
                 flushConsumeQueueLeastPages = 0;
             }
 
             long logicsMsgTimestamp = 0;
 
+            // 一定时间内未执行刷盘，会强制刷盘，默认60s
             int flushConsumeQueueThoroughInterval = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueThoroughInterval();
             long currentTimeMillis = System.currentTimeMillis();
             if (currentTimeMillis >= (this.lastFlushTimestamp + flushConsumeQueueThoroughInterval)) {
+                // 当时间满足flushConsumeQueueThoroughInterval时，即使写入的数量不足flushConsumeQueueLeastPages，也进行flush
                 this.lastFlushTimestamp = currentTimeMillis;
                 flushConsumeQueueLeastPages = 0;
                 logicsMsgTimestamp = DefaultMessageStore.this.getStoreCheckpoint().getLogicsMsgTimestamp();
@@ -1858,6 +1865,7 @@ public class DefaultMessageStore implements MessageStore {
 
             ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
 
+            // 遍历ConsumeQueue刷盘
             for (ConcurrentMap<Integer, ConsumeQueue> maps : tables.values()) {
                 for (ConsumeQueue cq : maps.values()) {
                     boolean result = false;
@@ -1867,6 +1875,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
             }
 
+            // 更新CheckPoint中ConsumeQueue最新刷盘时间
             if (0 == flushConsumeQueueLeastPages) {
                 if (logicsMsgTimestamp > 0) {
                     DefaultMessageStore.this.getStoreCheckpoint().setLogicsMsgTimestamp(logicsMsgTimestamp);
@@ -1888,6 +1897,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
             }
 
+            // 程序退出时强制刷盘
             this.doFlush(RETRY_TIMES_OVER);
 
             DefaultMessageStore.log.info(this.getServiceName() + " service end");

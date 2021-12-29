@@ -321,6 +321,11 @@ public class ConsumeQueue {
         return lastOffset;
     }
 
+    /**
+     * 消费队列文件刷盘
+     * @param flushLeastPages 最少刷盘页数
+     * @return 刷盘是否成功
+     */
     public boolean flush(final int flushLeastPages) {
         boolean result = this.mappedFileQueue.flush(flushLeastPages);
         if (isExtReadEnable()) {
@@ -422,6 +427,15 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * 将ConsumeQueue信息写入ConsumeQueue。
+     * ConsumeQueue文件并没有持久化到磁盘，而是由 {@link DefaultMessageStore.FlushConsumeQueueService} 异步刷盘
+     * @param offset commitLog offset
+     * @param size 消息大小
+     * @param tagsCode 消息tags的hashcode
+     * @param cqOffset ConsumeQueue逻辑偏移量
+     * @return
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
 

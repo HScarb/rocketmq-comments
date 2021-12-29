@@ -30,21 +30,26 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 文件存储队列，数据定时删除，无限增长<br>
+ * 队列是由多个文件组成
+ */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
-
+    // 每次触发删除文件，最多删除多少个文件
     private static final int DELETE_FILES_BATCH_MAX = 10;
-
+    // 文件存储位置
     private final String storePath;
-
+    // 每个文件的大小
     protected final int mappedFileSize;
-
+    // MappedFile集合
     protected final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
-
+    // 预分配MapedFile对象服务
     private final AllocateMappedFileService allocateMappedFileService;
-
+    // 当前刷盘位置指针，指针之前的所有数据全部持久化到磁盘
     protected long flushedWhere = 0;
+    // 当前数据提交指针，内存中ByteBuffer当前的提交位置。committedWhere >= flushedWhere
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -436,11 +441,18 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    /**
+     * 文件队列最新文件刷盘
+     * @param flushLeastPages 最少刷盘页数
+     * @return 是否全部刷盘完成
+     */
     public boolean flush(final int flushLeastPages) {
         boolean result = true;
+        // 根据flushedWhere（上次刷盘位置）找到要刷盘的MappedFile
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);
         if (mappedFile != null) {
             long tmpTimeStamp = mappedFile.getStoreTimestamp();
+            // MappedFile刷盘，返回当前文件刷盘位置
             int offset = mappedFile.flush(flushLeastPages);
             long where = mappedFile.getFileFromOffset() + offset;
             result = where == this.flushedWhere;
