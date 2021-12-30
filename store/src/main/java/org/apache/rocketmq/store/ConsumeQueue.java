@@ -321,11 +321,6 @@ public class ConsumeQueue {
         return lastOffset;
     }
 
-    /**
-     * 消费队列文件刷盘
-     * @param flushLeastPages 最少刷盘页数
-     * @return 刷盘是否成功
-     */
     public boolean flush(final int flushLeastPages) {
         boolean result = this.mappedFileQueue.flush(flushLeastPages);
         if (isExtReadEnable()) {
@@ -384,6 +379,7 @@ public class ConsumeQueue {
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
+        // 写入ConsumeQueue，重试最多30次
         for (int i = 0; i < maxRetries && canWrite; i++) {
             long tagsCode = request.getTagsCode();
             if (isExtWriteEnable()) {
@@ -400,9 +396,11 @@ public class ConsumeQueue {
                         topic, queueId, request.getCommitLogOffset());
                 }
             }
+            // 写入ConsumeQueue，注意这里还未强制刷盘
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
+                // 写入成功，更新CheckPoint中的最新写入时间
                 if (this.defaultMessageStore.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE ||
                     this.defaultMessageStore.getMessageStoreConfig().isEnableDLegerCommitLog()) {
                     this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(request.getStoreTimestamp());
@@ -410,6 +408,7 @@ public class ConsumeQueue {
                 this.defaultMessageStore.getStoreCheckpoint().setLogicsMsgTimestamp(request.getStoreTimestamp());
                 return;
             } else {
+                // 写入失败，等待1s继续写入，直到30次都失败
                 // XXX: warn and notify me
                 log.warn("[BUG]put commit log position info to " + topic + ":" + queueId + " " + request.getCommitLogOffset()
                     + " failed, retry " + i + " times");
@@ -428,13 +427,12 @@ public class ConsumeQueue {
     }
 
     /**
-     * 将ConsumeQueue信息写入ConsumeQueue。
-     * ConsumeQueue文件并没有持久化到磁盘，而是由 {@link DefaultMessageStore.FlushConsumeQueueService} 异步刷盘
-     * @param offset commitLog offset
-     * @param size 消息大小
-     * @param tagsCode 消息tags的hashcode
-     * @param cqOffset ConsumeQueue逻辑偏移量
-     * @return
+     * 往ConsumeQueue中写入索引项
+
+     * @param offset CommitLog offset
+     * @param size 消息长度
+     * @param tagsCode 过滤tag的hashcode
+     * @param cqOffset CommitLog中保存的该消消息在ConsumeQueue中的逻辑offset。在 {@link CommitLog#doAppend} 方法中已经生成并保存
      */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
