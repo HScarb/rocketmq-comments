@@ -331,16 +331,22 @@ public class HAService {
         }
     }
 
+    /**
+     * 从Slave连接Master实现类
+     */
     class HAClient extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
+        // 主节点IP:PORT
         private final AtomicReference<String> masterAddress = new AtomicReference<>();
+        // 向Master汇报Slave最大Offset
         private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
         private SocketChannel socketChannel;
         private Selector selector;
         private long lastWriteTimestamp = System.currentTimeMillis();
-
+        // Slave向Master汇报的offset
         private long currentReportedOffset = 0;
         private int dispatchPosition = 0;
+        // 从Master接受数据的ByteBuffer
         private ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
         private ByteBuffer byteBufferBackup = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
 
@@ -548,15 +554,26 @@ public class HAService {
             }
         }
 
+        /**
+         * slave接收master的数据
+         *
+         * 1. salve连接到master，向master上报slave当前的offset
+         * 2. master收到后确认给slave发送数据的开始位置
+         * 3. master查询开始位置对应的MappedFIle
+         * 4. master将查找到的数据发送给slave
+         * 5. slave收到数据后保存到自己的CommitLog
+         */
         @Override
         public void run() {
             log.info(this.getServiceName() + " service started");
 
             while (!this.isStopped()) {
                 try {
+                    // 只有配置了HAMaster地址的slave才会连接到master
                     if (this.connectMaster()) {
 
                         if (this.isTimeToReportOffset()) {
+                            // 向master上报slave本地最大的CommitLog的offset
                             boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
                             if (!result) {
                                 this.closeMaster();
@@ -564,7 +581,7 @@ public class HAService {
                         }
 
                         this.selector.select(1000);
-
+                        // 处理socket上的read事件，也就是处理master发来的数据
                         boolean ok = this.processReadEvent();
                         if (!ok) {
                             this.closeMaster();
