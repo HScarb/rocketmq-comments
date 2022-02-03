@@ -622,15 +622,17 @@ public class CommitLog {
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
                 || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
+            // 判断是否是定时消息
             if (msg.getDelayTimeLevel() > 0) {
                 if (msg.getDelayTimeLevel() > this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel()) {
                     msg.setDelayTimeLevel(this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel());
                 }
-
+                // 替换消息的Topic和QueueId为定时消息Topic和延迟等级对应的QueueId
                 topic = TopicValidator.RMQ_SYS_SCHEDULE_TOPIC;
                 queueId = ScheduleMessageService.delayLevel2QueueId(msg.getDelayTimeLevel());
 
                 // Backup real topic, queueId
+                // 把真正的 Topic 和 QueueId 放到消息属性中
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_TOPIC, msg.getTopic());
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msg.getQueueId()));
                 msg.setPropertiesString(MessageDecoder.messageProperties2String(msg.getProperties()));

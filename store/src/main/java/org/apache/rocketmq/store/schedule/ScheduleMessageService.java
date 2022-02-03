@@ -114,6 +114,7 @@ public class ScheduleMessageService extends ConfigManager {
         if (started.compareAndSet(false, true)) {
             super.load();
             this.timer = new Timer("ScheduleMessageTimerThread", true);
+            // 为每个延迟等级创建一个DeliverDelayedMessageTimerTask，用于周期性扫描延迟等级的消息，将到期的消息重新投递
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
                 Integer level = entry.getKey();
                 Long timeDelay = entry.getValue();
@@ -127,6 +128,7 @@ public class ScheduleMessageService extends ConfigManager {
                 }
             }
 
+            // 创建一个周期性定时任务，定时将offsetTable持久化
             this.timer.scheduleAtFixedRate(new TimerTask() {
 
                 @Override
@@ -300,6 +302,7 @@ public class ScheduleMessageService extends ConfigManager {
         }
 
         public void executeOnTimeup() {
+            // 根据delayLevel查找对应的延迟消息ConsumeQueue
             ConsumeQueue cq =
                 ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(TopicValidator.RMQ_SYS_SCHEDULE_TOPIC,
                     delayLevel2QueueId(delayLevel));
@@ -307,13 +310,16 @@ public class ScheduleMessageService extends ConfigManager {
             long failScheduleOffset = offset;
 
             if (cq != null) {
+                // 根据ConsumeQueue的有效延迟消息逻辑offset，获取所有有效的消息
                 SelectMappedBufferResult bufferCQ = cq.getIndexBuffer(this.offset);
                 if (bufferCQ != null) {
                     try {
                         long nextOffset = offset;
                         int i = 0;
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
+                        // 遍历ConsumeQueue中的所有有效消息
                         for (; i < bufferCQ.getSize(); i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
+                            // 获取ConsumeQueue索引的三个关键属性
                             long offsetPy = bufferCQ.getByteBuffer().getLong();
                             int sizePy = bufferCQ.getByteBuffer().getInt();
                             long tagsCode = bufferCQ.getByteBuffer().getLong();
@@ -329,7 +335,7 @@ public class ScheduleMessageService extends ConfigManager {
                                     tagsCode = computeDeliverTimestamp(delayLevel, msgStoreTime);
                                 }
                             }
-
+                            // ConsumeQueue里面的tagsCode实际是一个时间点（投递时间点）
                             long now = System.currentTimeMillis();
                             long deliverTimestamp = this.correctDeliverTimestamp(now, tagsCode);
 
@@ -337,6 +343,8 @@ public class ScheduleMessageService extends ConfigManager {
 
                             long countdown = deliverTimestamp - now;
 
+                            // 如果现在已经到了投递时间点，投递消息
+                            // 如果现在还没到投递时间点，继续创建一个定时任务，countdown秒之后执行
                             if (countdown <= 0) {
                                 MessageExt msgExt =
                                     ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(
@@ -350,10 +358,11 @@ public class ScheduleMessageService extends ConfigManager {
                                                 msgInner.getTopic(), msgInner);
                                             continue;
                                         }
+                                        // 重新投递消息到CommitLog
                                         PutMessageResult putMessageResult =
                                             ScheduleMessageService.this.writeMessageStore
                                                 .putMessage(msgInner);
-
+                                        // 投递成功
                                         if (putMessageResult != null
                                             && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
                                             if (ScheduleMessageService.this.defaultMessageStore.getMessageStoreConfig().isEnableScheduleMessageStats()) {
@@ -367,8 +376,14 @@ public class ScheduleMessageService extends ConfigManager {
                                                 ScheduleMessageService.this.defaultMessageStore.getBrokerStatsManager().incBrokerPutNums(putMessageResult.getAppendMessageResult().getMsgNum());
                                             }
                                             continue;
+                                        // 投递失败
                                         } else {
-                                            // XXX: warn and notify me
+                                            /*
+                                             * XXX: warn and notify me
+                                             * msgExt里面的内容不完整
+                                             * ，如没有REAL_QID,REAL_TOPIC之类的
+                                             * ，导致数据无法正常的投递到正确的消费队列，所以暂时先直接跳过该条消息
+                                             */
                                             log.error(
                                                 "ScheduleMessageService, a message time up, but reput it failed, topic: {} msgId {}",
                                                 msgExt.getTopic(), msgExt.getMsgId());
@@ -388,6 +403,8 @@ public class ScheduleMessageService extends ConfigManager {
                                     }
                                 }
                             } else {
+                                // 该条ConsumeQueue索引对应的消息如果未到投递时间，那么创建一个定时任务，到投递时间时执行
+                                // 如果有还未投递的消息，创建定时任务后直接返回
                                 ScheduleMessageService.this.timer.schedule(
                                     new DeliverDelayedMessageTimerTask(this.delayLevel, nextOffset),
                                     countdown);
@@ -396,6 +413,7 @@ public class ScheduleMessageService extends ConfigManager {
                             }
                         } // end of for
 
+                        // 如果所有消息都已经被投递，那么等待0.1s后重新执行该检查任务
                         nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
                         ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(
                             this.delayLevel, nextOffset), DELAY_FOR_A_WHILE);
