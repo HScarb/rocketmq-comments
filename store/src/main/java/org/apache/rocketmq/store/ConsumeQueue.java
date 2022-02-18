@@ -148,6 +148,7 @@ public class ConsumeQueue {
                 }
             }
 
+            // 遍历结束，更新队列文件的Flush和Commit偏移量为遍历到正确消息的偏移量，删除之后的文件
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
@@ -409,7 +410,9 @@ public class ConsumeQueue {
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
-                // 写入成功，更新CheckPoint中的最新写入时间
+                // 如果是SLAVE，在写入成功后更新CheckPoint中的最新写入时间。是为了修复在SLAVE中ConsumeQueue异常恢复慢的问题
+                // 因为在当前的设计中，没有更新SLAVE的消费队列时间戳到CheckPoint中的逻辑，所以在SLAVE中在doReput()逻辑中更新该时间戳
+                // https://github.com/apache/rocketmq/pull/1455
                 if (this.defaultMessageStore.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE ||
                     this.defaultMessageStore.getMessageStoreConfig().isEnableDLegerCommitLog()) {
                     this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(request.getStoreTimestamp());
