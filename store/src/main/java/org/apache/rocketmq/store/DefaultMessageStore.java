@@ -1817,6 +1817,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 清理ConsumeQueue服务，也会清理IndexFile
+     */
     class CleanConsumeQueueService {
         private long lastPhysicalMinOffset = 0;
 
@@ -1835,6 +1838,7 @@ public class DefaultMessageStore implements MessageStore {
             if (minOffset > this.lastPhysicalMinOffset) {
                 this.lastPhysicalMinOffset = minOffset;
 
+                // 删除逻辑队列文件
                 ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
 
                 for (ConcurrentMap<Integer, ConsumeQueue> maps : tables.values()) {
@@ -1850,6 +1854,7 @@ public class DefaultMessageStore implements MessageStore {
                     }
                 }
 
+                // 清理索引
                 DefaultMessageStore.this.indexService.deleteExpiredFile(minOffset);
             }
         }

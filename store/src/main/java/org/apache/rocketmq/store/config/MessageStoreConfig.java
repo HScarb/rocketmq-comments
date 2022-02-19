@@ -117,6 +117,8 @@ public class MessageStoreConfig {
     private int maxHashSlotNum = 5000000;
     private int maxIndexNum = 5000000 * 4;
     private int maxMsgsNumBatch = 64;
+    // 是否在异常关闭恢复时保证索引文件安全
+    // 如果设为true，恢复时会从索引文件最后成功保存的时间点开始恢复CommitLog
     @ImportantField
     private boolean messageIndexSafe = false;
     private int haListenPort = 10912;

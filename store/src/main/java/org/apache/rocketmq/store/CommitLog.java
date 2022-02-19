@@ -553,6 +553,7 @@ public class CommitLog {
         int sysFlag = byteBuffer.getInt(MessageDecoder.SYSFLAG_POSITION);
         int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
         int msgStoreTimePos = 4 + 4 + 4 + 4 + 4 + 8 + 8 + 4 + 8 + bornhostLength;
+        // 获取CommitLog文件中第一条消息的存储时间
         // 如果文件中第一条消息的存储时间等于0，说明该消息的存储文件中未存储任何消息，返回false
         long storeTimestamp = byteBuffer.getLong(msgStoreTimePos);
         if (0 == storeTimestamp) {
@@ -560,7 +561,7 @@ public class CommitLog {
         }
 
         // 将checkpoint中存储的消息或索引的刷盘时间与文件中第一条消息的保存时间进行对比
-        // 如果文件中第一条消息的保存时间小于等于记录的刷盘时间，那么应该从该文件开始恢复
+        // 如果CommitLog文件中第一条消息的保存时间小于等于checkpoint记录的刷盘时间（这里是索引文件刷盘时间），那么应该从该文件开始恢复
         // 否则，说明该文件就算有保存了消息，checkpoint也没有记录，应该继续检查上一个文件判断是否从上一个文件开始恢复
         if (this.defaultMessageStore.getMessageStoreConfig().isMessageIndexEnable()
             && this.defaultMessageStore.getMessageStoreConfig().isMessageIndexSafe()) {
