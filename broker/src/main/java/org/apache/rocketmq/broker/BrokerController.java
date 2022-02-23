@@ -501,12 +501,17 @@ public class BrokerController {
         this.transactionalMessageCheckService = new TransactionalMessageCheckService(this);
     }
 
+    /**
+     * ACL（访问控制列表）初始化
+     */
     private void initialAcl() {
         if (!this.brokerConfig.isAclEnable()) {
             log.info("The broker dose not enable acl");
             return;
         }
 
+        // 使用SPI机制加载配置的AccessValidator实现类
+        // 读取METAINF/service/org.apache.rocketmq.acl.AccessValidator文件中配置的访问验证器PlainAccessValidator
         List<AccessValidator> accessValidators = ServiceProvider.load(ServiceProvider.ACL_VALIDATOR_ID, AccessValidator.class);
         if (accessValidators == null || accessValidators.isEmpty()) {
             log.info("The broker dose not load the AccessValidator");
@@ -516,14 +521,20 @@ public class BrokerController {
         for (AccessValidator accessValidator: accessValidators) {
             final AccessValidator validator = accessValidator;
             accessValidatorMap.put(validator.getClass(),validator);
+            // 向Broker处理服务启注册钩子函数
             this.registerServerRPCHook(new RPCHook() {
-
+                /**
+                 * 在服务端接收到请求并解码后、执行处理请求前被调用
+                 */
                 @Override
                 public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
                     //Do not catch the exception
                     validator.validate(validator.parse(request, remoteAddr));
                 }
 
+                /**
+                 * 在处理完请求后调用
+                 */
                 @Override
                 public void doAfterResponse(String remoteAddr, RemotingCommand request, RemotingCommand response) {
                 }

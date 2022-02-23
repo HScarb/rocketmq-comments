@@ -40,6 +40,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 权限配置文件管理器
+ * 解析acl配置文件，加载访问控制规则，验证访问权限
+ */
 public class PlainPermissionManager {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
@@ -66,17 +70,22 @@ public class PlainPermissionManager {
         watch();
     }
 
+    /**
+     * 解析ACL配置文件，讲ACL配置规则加载到内存
+     */
     public void load() {
 
         Map<String, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
         List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
 
+        // 解析配置文件成JSONObject
         JSONObject plainAclConfData = AclUtils.getYamlDataObject(fileHome + File.separator + fileName,
             JSONObject.class);
         if (plainAclConfData == null || plainAclConfData.isEmpty()) {
             throw new AclException(String.format("%s file is not data", fileHome + File.separator + fileName));
         }
         log.info("Broker plain acl conf data is : ", plainAclConfData.toString());
+        // 根据全局白名单列表构建对应的规则校验器
         JSONArray globalWhiteRemoteAddressesList = plainAclConfData.getJSONArray("globalWhiteRemoteAddresses");
         if (globalWhiteRemoteAddressesList != null && !globalWhiteRemoteAddressesList.isEmpty()) {
             for (int i = 0; i < globalWhiteRemoteAddressesList.size(); i++) {
@@ -85,6 +94,7 @@ public class PlainPermissionManager {
             }
         }
 
+        // 解析accounts，按用户名将其配置规则存入plainAccessResourceMap
         JSONArray accounts = plainAclConfData.getJSONArray(AclConstants.CONFIG_ACCOUNTS);
         if (accounts != null && !accounts.isEmpty()) {
             List<PlainAccessConfig> plainAccessConfigList = accounts.toJavaList(PlainAccessConfig.class);
@@ -299,6 +309,9 @@ public class PlainPermissionManager {
         return aclConfig;
     }
 
+    /**
+     * 监听ACL配置文件变化，重新load
+     */
     private void watch() {
         try {
             String watchFilePath = fileHome + fileName;

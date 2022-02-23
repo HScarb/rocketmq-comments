@@ -44,6 +44,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
+    // Topic与MessageQueue的对应关系
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
@@ -214,6 +215,10 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * 消费者重平衡
+     * 获取全部的订阅信息，从订阅信息中找到所有的Topic，每一个Topic都重平衡
+     */
     public void doRebalance(final boolean isOrder) {
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
@@ -229,6 +234,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // 重新分配之后，移除不再属于当前实例的MessageQueue和ProcessQueue
         this.truncateMessageQueueNotMyTopic();
     }
 
@@ -236,6 +242,11 @@ public abstract class RebalanceImpl {
         return subscriptionInner;
     }
 
+    /**
+     * 根据Topic 重新进行MessageQueue负载
+     *
+     * @param topic
+     */
     private void rebalanceByTopic(final String topic, final boolean isOrder) {
         switch (messageModel) {
             case BROADCASTING: {
@@ -256,7 +267,9 @@ public abstract class RebalanceImpl {
                 break;
             }
             case CLUSTERING: {
+                // 获取Topic下的所有MessageQueue
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 获取所有的消费者ID
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -274,16 +287,17 @@ public abstract class RebalanceImpl {
 
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
-
+                    
+                    // 按策略分配，得到分配给当前实例的MessageQueue
                     AllocateMessageQueueStrategy strategy = this.allocateMessageQueueStrategy;
 
                     List<MessageQueue> allocateResult = null;
                     try {
-                        allocateResult = strategy.allocate(
-                            this.consumerGroup,
-                            this.mQClientFactory.getClientId(),
-                            mqAll,
-                            cidAll);
+                        allocateResult = strategy.allocate(//
+                            this.consumerGroup, // 消费组
+                            this.mQClientFactory.getClientId(), // 当前消费者ID
+                            mqAll,// Topic下所有的MessageQueue
+                            cidAll); //当前Topic下，当前消费组中所有的消费者ID
                     } catch (Throwable e) {
                         log.error("AllocateMessageQueueStrategy.allocate Exception. allocateMessageQueueStrategyName={}", strategy.getName(),
                             e);
@@ -295,12 +309,14 @@ public abstract class RebalanceImpl {
                         allocateResultSet.addAll(allocateResult);
                     }
 
+                    // 新分配的MessageQueue做相应更新
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
                         log.info(
                             "rebalanced result changed. allocateMessageQueueStrategyName={}, group={}, topic={}, clientId={}, mqAllSize={}, cidAllSize={}, rebalanceResultSize={}, rebalanceResultSet={}",
                             strategy.getName(), consumerGroup, topic, this.mQClientFactory.getClientId(), mqSet.size(), cidAll.size(),
                             allocateResultSet.size(), allocateResultSet);
+                        // 回调MessageQueue变化事件
                         this.messageQueueChanged(topic, mqSet, allocateResultSet);
                     }
                 }
