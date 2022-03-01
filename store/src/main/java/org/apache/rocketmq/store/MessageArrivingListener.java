@@ -23,13 +23,16 @@ import java.util.Map;
  * 新消息到达监听器接口
  */
 public interface MessageArrivingListener {
+
     /**
-     * 新消息到达
-     *
-     * @param topic 主题
-     * @param queueId 队列编号
-     * @param logicOffset 消费队列逻辑位置
-     * @param tagsCode 消息tagsCode
+     * Notify that a new message arrives in a consume queue
+     * @param topic topic name
+     * @param queueId consume queue id
+     * @param logicOffset consume queue offset
+     * @param tagsCode message tags hash code
+     * @param msgStoreTime message store time
+     * @param filterBitMap message bloom filter
+     * @param properties message properties
      */
     void arriving(String topic, int queueId, long logicOffset, long tagsCode,
         long msgStoreTime, byte[] filterBitMap, Map<String, String> properties);
