@@ -166,8 +166,11 @@ public class MessageStoreConfig {
     private boolean enableMultiDispatch = false;
     private int maxLmqConsumeQueueNum = 20000;
 
+    // 是否开启异步延迟消息投递
     private boolean enableScheduleAsyncDeliver = false;
+    // 定时消息异步投递等待队列最大长度（异步投递最大并发数）
     private int scheduleAsyncDeliverMaxPendingLimit = 2000;
+    // 消息发送失败触发阻塞时的重试次数
     private int scheduleAsyncDeliverMaxResendNum2Blocked = 3;
 
     public boolean isDebugLockEnable() {
