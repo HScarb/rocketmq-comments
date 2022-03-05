@@ -1163,12 +1163,16 @@ public class BrokerController {
         return accessValidatorMap;
     }
 
+    /**
+     * 启动Slave信息同步的定时任务
+     */
     private void handleSlaveSynchronize(BrokerRole role) {
         if (role == BrokerRole.SLAVE) {
             if (null != slaveSyncFuture) {
                 slaveSyncFuture.cancel(false);
             }
             this.slaveSynchronize.setMasterAddr(null);
+            // 启动定时任务，每10s执行一次元数据同步任务
             slaveSyncFuture = this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {

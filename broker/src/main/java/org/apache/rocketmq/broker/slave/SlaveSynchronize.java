@@ -28,6 +28,9 @@ import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * Slave从Master同步元数据
+ */
 public class SlaveSynchronize {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -45,6 +48,9 @@ public class SlaveSynchronize {
         this.masterAddr = masterAddr;
     }
 
+    /**
+     * 同步所有元数据
+     */
     public void syncAll() {
         this.syncTopicConfig();
         this.syncConsumerOffset();
@@ -52,6 +58,9 @@ public class SlaveSynchronize {
         this.syncSubscriptionGroupConfig();
     }
 
+    /**
+     * 同步Topic路由信息
+     */
     private void syncTopicConfig() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
@@ -76,6 +85,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步消息消费进度
+     */
     private void syncConsumerOffset() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
@@ -92,6 +104,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步延迟队列调度进度
+     */
     private void syncDelayOffset() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
@@ -116,6 +131,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步消费组信息
+     */
     private void syncSubscriptionGroupConfig() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null  && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
