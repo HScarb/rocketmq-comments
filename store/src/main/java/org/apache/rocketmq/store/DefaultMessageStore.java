@@ -1718,15 +1718,25 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private void deleteExpiredFiles() {
+            // 本次删除的文件数量
             int deleteCount = 0;
+            // 文件保留时间，默认72h。如果超出该时间，则认为是过期文件，可以被删除
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 删除物理文件的时间间隔，默认100ms。在一次删除过程中，删除两个文件的间隔时间
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 第一次拒绝删除之后能保留文件的最大时间，默认120s。
+            // 在删除文件时，如果该文件被其他线程占用，会阻止删除，同时在第一次试图删除该文件时记录当前时间戳。
+            // 在保留时间内，文件可以拒绝删除，超过该时间后，会将引用次数设置为负数，文件将被强制删除。
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
             boolean timeup = this.isTimeToDelete();
             boolean spacefull = this.isSpaceToDelete();
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
+            // 满足下列条件之一将继续删除
+            // 1. 到了设置的每天固定删除时间（4点）
+            // 2. 磁盘空间不充足，默认为85%
+            // 3. executeDeleteFilesManually方法被调用，手工删除文件
             if (timeup || spacefull || manualDelete) {
 
                 if (manualDelete)

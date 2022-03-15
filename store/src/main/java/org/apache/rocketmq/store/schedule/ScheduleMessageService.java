@@ -118,6 +118,12 @@ public class ScheduleMessageService extends ConfigManager {
         }
     }
 
+    /**
+     * 更新下一次要投递的逻辑偏移量
+     *
+     * @param delayLevel 延迟等级
+     * @param offset 该延迟等级下次要投递的逻辑偏移量
+     */
     private void updateOffset(int delayLevel, long offset) {
         this.offsetTable.put(delayLevel, offset);
     }
