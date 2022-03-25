@@ -71,12 +71,13 @@ public class ScheduleMessageService extends ConfigManager {
         new ConcurrentHashMap<Integer, Long>(32);
     private final DefaultMessageStore defaultMessageStore;
     private final AtomicBoolean started = new AtomicBoolean(false);
+    // 异步投递线程池
     private ScheduledExecutorService deliverExecutorService;
     private MessageStore writeMessageStore;
     private int maxDelayLevel;
     // 异步投递
     private boolean enableAsyncDeliver = false;
-    // 异步投递线程池
+    // 异步投递任务状态更新线程
     private ScheduledExecutorService handleExecutorService;
     // 异步投递任务等待队列
     private final Map<Integer /* level */, LinkedBlockingQueue<PutResultProcess>> deliverPendingTable =

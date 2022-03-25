@@ -1688,18 +1688,22 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 清理 CommitLog 文件服务
+     */
     class CleanCommitLogService {
-
+        // 手工触发一次最多执行删除次数
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
+        // 磁盘空间警戒水位，超过，则停止接收新消息（出于保护自身目的）
         private final double diskSpaceWarningLevelRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "0.90"));
-
+        // 磁盘空间超过85%开始强制删除文件
         private final double diskSpaceCleanForciblyRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "0.85"));
         private long lastRedeleteTimestamp = 0;
-
+        // 手工触发删除消息
         private volatile int manualDeleteFileSeveralTimes = 0;
-
+        // 立刻开始强制删除文件
         private volatile boolean cleanImmediately = false;
 
         public void executeDeleteFilesManually() {
@@ -1735,13 +1739,14 @@ public class DefaultMessageStore implements MessageStore {
 
             // 满足下列条件之一将继续删除
             // 1. 到了设置的每天固定删除时间（4点）
-            // 2. 磁盘空间不充足，默认为85%
+            // 2. 磁盘空间不充足，默认为75%
             // 3. executeDeleteFilesManually方法被调用，手工删除文件
             if (timeup || spacefull || manualDelete) {
 
                 if (manualDelete)
                     this.manualDeleteFileSeveralTimes--;
 
+                // 是否立即强制删除文件
                 boolean cleanAtOnce = DefaultMessageStore.this.getMessageStoreConfig().isCleanFileForciblyEnable() && this.cleanImmediately;
 
                 log.info("begin to delete before {} hours file. timeup: {} spacefull: {} manualDeleteFileSeveralTimes: {} cleanAtOnce: {}",
@@ -1756,12 +1761,16 @@ public class DefaultMessageStore implements MessageStore {
                 deleteCount = DefaultMessageStore.this.commitLog.deleteExpiredFile(fileReservedTime, deletePhysicFilesInterval,
                     destroyMapedFileIntervalForcibly, cleanAtOnce);
                 if (deleteCount > 0) {
+                // 危险情况：磁盘满了，但是又无法删除文件
                 } else if (spacefull) {
                     log.warn("disk space will be full soon, but delete file failed.");
                 }
             }
         }
 
+        /**
+         * 最前面的文件有可能Hang住，定期检查一下
+         */
         private void redeleteHangedFile() {
             int interval = DefaultMessageStore.this.getMessageStoreConfig().getRedeleteHangedFileInterval();
             long currentTimestamp = System.currentTimeMillis();
@@ -1778,6 +1787,9 @@ public class DefaultMessageStore implements MessageStore {
             return CleanCommitLogService.class.getSimpleName();
         }
 
+        /**
+         * 是否可以删除文件，时间是否满足
+         */
         private boolean isTimeToDelete() {
             String when = DefaultMessageStore.this.getMessageStoreConfig().getDeleteWhen();
             if (UtilAll.isItTimeToDo(when)) {
@@ -1788,11 +1800,15 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
+        /**
+         * 是否可以删除文件，空间是否满足
+         */
         private boolean isSpaceToDelete() {
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
             cleanImmediately = false;
 
+            // 检测物理文件磁盘空间
             {
                 String commitLogStorePath = DefaultMessageStore.this.getStorePathPhysic();
                 String[] storePaths = commitLogStorePath.trim().split(MessageStoreConfig.MULTI_PATH_SPLITTER);
@@ -1835,6 +1851,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
             }
 
+            // 检测逻辑文件磁盘空间
             {
                 String storePathLogics = DefaultMessageStore.this.getStorePathLogic();
                 double logicsRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogics);
