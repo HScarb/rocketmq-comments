@@ -113,6 +113,7 @@ public class IndexService {
                 return;
             }
 
+            // 比较第一个 IndexFile 的最大 offset， 如果小于 offset，说明不需要删除任何文件
             long endPhyOffset = this.indexFileList.get(0).getEndPhyOffset();
             if (endPhyOffset < offset) {
                 files = this.indexFileList.toArray();
@@ -123,6 +124,7 @@ public class IndexService {
             this.readWriteLock.readLock().unlock();
         }
 
+        // 有文件需要被删除，遍历所有文件，删除所有最大 offset 小于 CommitLog offset 的文件
         if (files != null) {
             List<IndexFile> fileList = new ArrayList<IndexFile>();
             for (int i = 0; i < (files.length - 1); i++) {

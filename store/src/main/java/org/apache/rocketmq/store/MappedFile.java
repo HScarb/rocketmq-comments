@@ -464,7 +464,13 @@ public class MappedFile extends ReferenceResource {
         return true;
     }
 
+    /**
+     * 清理资源，destroy与调用shutdown的线程必须是同一个
+     *
+     * @return 是否被destory成功，上层调用需要对失败情况处理，失败后尝试重试
+     */
     public boolean destroy(final long intervalForcibly) {
+        // 释放引用，关闭内存映射
         this.shutdown(intervalForcibly);
 
         if (this.isCleanupOver()) {

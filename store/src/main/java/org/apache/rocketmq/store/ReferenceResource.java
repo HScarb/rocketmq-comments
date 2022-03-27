@@ -40,11 +40,15 @@ public abstract class ReferenceResource {
         return this.available;
     }
 
+    /**
+     * 禁止资源被访问 shutdown不允许调用多次，最好是由管理线程调用
+     */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
             this.available = false;
             this.firstShutdownTimestamp = System.currentTimeMillis();
             this.release();
+        // 强制shutdown
         } else if (this.getRefCount() > 0) {
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
                 this.refCount.set(-1000 - this.getRefCount());
@@ -53,13 +57,16 @@ public abstract class ReferenceResource {
         }
     }
 
+    /**
+     * 释放资源
+     */
     public void release() {
         long value = this.refCount.decrementAndGet();
         if (value > 0)
             return;
 
         synchronized (this) {
-
+            // cleanup内部要对是否clean做处理
             this.cleanupOver = this.cleanup(value);
         }
     }
