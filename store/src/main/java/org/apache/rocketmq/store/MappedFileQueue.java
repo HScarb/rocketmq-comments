@@ -370,6 +370,7 @@ public class MappedFileQueue {
         if (null == mfs)
             return 0;
 
+        // 最后一个文件处于写状态，不能删除
         int mfsLength = mfs.length - 1;
         int deleteCount = 0;
         List<MappedFile> files = new ArrayList<MappedFile>();
@@ -378,8 +379,9 @@ public class MappedFileQueue {
                 MappedFile mappedFile = (MappedFile) mfs[i];
                 // 计算文件应该被删除的时间，等于文件最后修改的时间 + 文件过期时间
                 long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
-                // 如果文件过期，或开启强制删除，则删除文件
+                // 如果文件过期，或者是强制删除，则遍历列表文件，执行删除
                 if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
+                    // 尝试删除该文件
                     if (mappedFile.destroy(intervalForcibly)) {
                         files.add(mappedFile);
                         deleteCount++;
@@ -504,6 +506,7 @@ public class MappedFileQueue {
             MappedFile firstMappedFile = this.getFirstMappedFile();
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
+                // 将查询的 Offset 与文件队列中的起始 Offset 和 末尾 Offset 对比，如果不在队列范围内则打印错误日志
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                         offset,
@@ -512,6 +515,7 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    // 根据 Offset 和每个文件的大小计算出所在文件
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {

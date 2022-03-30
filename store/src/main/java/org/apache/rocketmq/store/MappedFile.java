@@ -465,12 +465,14 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 清理资源，destroy与调用shutdown的线程必须是同一个
+     * 尝试删除文件
      *
+     * @param intervalForcibly 强制删除等待时间，如果一个文件被其他线程使用，第一次尝试删除过后intervalForcibly ms才能真正被删除
      * @return 是否被destory成功，上层调用需要对失败情况处理，失败后尝试重试
      */
     public boolean destroy(final long intervalForcibly) {
-        // 释放引用，关闭内存映射
+        // 尝试关闭该文件，释放引用，关闭内存映射
+        // 如果该文件被其他线程使用（引用计数>0），则先设为不可用，下次删除时
         this.shutdown(intervalForcibly);
 
         if (this.isCleanupOver()) {
