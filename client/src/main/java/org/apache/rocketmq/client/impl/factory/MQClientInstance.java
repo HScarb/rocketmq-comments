@@ -85,6 +85,9 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 客户端实例
+ */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
@@ -92,12 +95,28 @@ public class MQClientInstance {
     private final int instanceIndex;
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
+    /**
+     * 生产者信息
+     * Key：groupName
+     * Value: Producer
+     * 一个GroupName在一个MQClientInstance上，只能有一个Producer
+     */
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
+    /**
+     * 消费者信息
+     * Key:groupName
+     * Value:Consumer
+     * 在一个MQClientInstance上，一个groupName中只能有一个Consumer
+     */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
     private final NettyClientConfig nettyClientConfig;
     private final MQClientAPIImpl mQClientAPIImpl;
     private final MQAdminImpl mQAdminImpl;
+    /**
+     * Topic 路由信息
+     * 从NameServer更新
+     */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<String, TopicRouteData>();
     private final Lock lockNamesrv = new ReentrantLock();
     private final Lock lockHeartbeat = new ReentrantLock();
@@ -222,6 +241,11 @@ public class MQClientInstance {
         return mqList;
     }
 
+    /**
+     * 启动客户端代理
+     *
+     * @throws MQClientException
+     */
     public void start() throws MQClientException {
 
         synchronized (this) {
@@ -241,6 +265,7 @@ public class MQClientInstance {
                     // Start rebalance service
                     this.rebalanceService.start();
                     // Start push service
+                    // 当消费失败的时候，需要把消息发回去
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
                     this.serviceState = ServiceState.RUNNING;
@@ -268,6 +293,10 @@ public class MQClientInstance {
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
 
+        /**
+         * 默认每30s从nameserver获取Topic路由信息
+         * 包括 生产者和消费者
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -280,6 +309,11 @@ public class MQClientInstance {
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
 
+        /**
+         * 每30s向Broker端发送心跳
+         * 1. 清除离线的Broker
+         * 2. 汇报心跳给broker
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -293,6 +327,9 @@ public class MQClientInstance {
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        /**
+         * 每5s把消费者的offset持久化
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -305,6 +342,9 @@ public class MQClientInstance {
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
+        /**
+         * 每60s调整线程池
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -489,6 +529,11 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 调整线程池
+     * <p>
+     * 调整每一个PushConsumer的线程池，对于PullConsumer不需要
+     */
     public void adjustThreadPool() {
         Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -981,6 +1026,9 @@ public class MQClientInstance {
         return null;
     }
 
+    /**
+     * 根据Broker名和BrokerId获取Broker地址
+     */
     public FindBrokerResult findBrokerAddressInSubscribe(
         final String brokerName,
         final long brokerId,

@@ -41,7 +41,8 @@ public abstract class ReferenceResource {
     }
 
     /**
-     * 禁止资源被访问 shutdown不允许调用多次，最好是由管理线程调用
+     * 尝试关闭文件，如果文件被占用（引用计数>0）则先设为不可用，且设置第一次尝试关闭的时间
+     * 后续调用时，如果时间间隔大于intervalForcibly，则可以将引用计数设为负数，此时文件可以被删除
      */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {

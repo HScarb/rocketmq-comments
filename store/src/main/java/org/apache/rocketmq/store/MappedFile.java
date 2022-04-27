@@ -78,10 +78,19 @@ public class MappedFile extends ReferenceResource {
     public MappedFile() {
     }
 
+    /**
+     * 普通 MappedFile，读写 PageCache
+     */
     public MappedFile(final String fileName, final int fileSize) throws IOException {
         init(fileName, fileSize);
     }
 
+    /**
+     * 开启 TransientStorePool 的 MappedFile
+     * 写堆外内存，异步提交到 PageCache，异步刷盘
+     * 读 PageCache
+     * 被 {@link AllocateMappedFileService} 调用
+     */
     public MappedFile(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize, transientStorePool);
@@ -97,6 +106,37 @@ public class MappedFile extends ReferenceResource {
         }
     }
 
+    /**
+     * 清理ByteBuffer
+     * DirectByteBuffer
+     * <p>
+     * DirectByteBuffer如何清除?
+     * http://stackoverflow.com/questions/1854398/how-to-garbage-collect-a-direct-buffer-java
+     *
+        public static void destroyBuffer(Buffer buffer) {
+            if(buffer.isDirect()) {
+                try {
+
+                    // 下面的att属性在JDK<=1.6的时候，叫做viewedBuffer
+                    // 在1.7中改成了att
+                    if(!buffer.getClass().getName().equals("java.nio.DirectByteBuffer")) {
+                        Field attField = buffer.getClass().getDeclaredField("att");
+                        attField.setAccessible(true);
+                        buffer = (Buffer) attField.get(buffer);
+                    }
+
+                    Method cleanerMethod = buffer.getClass().getMethod("cleaner");
+                    cleanerMethod.setAccessible(true);
+                    Object cleaner = cleanerMethod.invoke(buffer);
+                    Method cleanMethod = cleaner.getClass().getMethod("clean");
+                    cleanMethod.setAccessible(true);
+                    cleanMethod.invoke(cleaner);
+                } catch(Exception e) {
+                    throw new QuartetRuntimeException("Could not destroy direct buffer " + buffer, e);
+                }
+            }
+        }
+     */
     public static void clean(final ByteBuffer buffer) {
         if (buffer == null || !buffer.isDirect() || buffer.capacity() == 0)
             return;
@@ -151,6 +191,9 @@ public class MappedFile extends ReferenceResource {
         return TOTAL_MAPPED_VIRTUAL_MEMORY.get();
     }
 
+    /**
+     * 使用 TransientStorePool 的 MappedFile 初始化
+     */
     public void init(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize);
@@ -168,7 +211,9 @@ public class MappedFile extends ReferenceResource {
         ensureDirOK(this.file.getParent());
 
         try {
+            // 创建 FileChannel
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
+            // 内存映射
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
             TOTAL_MAPPED_FILES.incrementAndGet();
@@ -465,12 +510,14 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 清理资源，destroy与调用shutdown的线程必须是同一个
+     * 尝试删除文件
      *
+     * @param intervalForcibly 强制删除等待时间，如果一个文件被其他线程使用，第一次尝试删除过后intervalForcibly ms才能真正被删除
      * @return 是否被destory成功，上层调用需要对失败情况处理，失败后尝试重试
      */
     public boolean destroy(final long intervalForcibly) {
-        // 释放引用，关闭内存映射
+        // 尝试关闭该文件，释放引用，关闭内存映射
+        // 如果该文件被其他线程使用（引用计数>0），则先设为不可用，下次删除时
         this.shutdown(intervalForcibly);
 
         if (this.isCleanupOver()) {
@@ -516,11 +563,15 @@ public class MappedFile extends ReferenceResource {
         this.committedPosition.set(pos);
     }
 
+    /**
+     * 文件预热，避免读写时缺页异常
+     */
     public void warmMappedFile(FlushDiskType type, int pages) {
         long beginTime = System.currentTimeMillis();
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
         int flush = 0;
         long time = System.currentTimeMillis();
+        // 通过写入 1G 的字节 0 来让操作系统分配物理内存空间，如果没有填充值，操作系统不会实际分配物理内存，防止在写入消息时发生缺页异常
         for (int i = 0, j = 0; i < this.fileSize; i += MappedFile.OS_PAGE_SIZE, j++) {
             byteBuffer.put(i, (byte) 0);
             // force flush when flush disk type is sync
@@ -584,11 +635,13 @@ public class MappedFile extends ReferenceResource {
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
         Pointer pointer = new Pointer(address);
         {
+            // 通过系统调用 mlock 锁定该文件的 Page Cache，防止其被交换到 swap 空间
             int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));
             log.info("mlock {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }
 
         {
+            // 通过系统调用 madvise 给操作系统建议，说明该文件在不久的将来要被访问
             int ret = LibC.INSTANCE.madvise(pointer, new NativeLong(this.fileSize), LibC.MADV_WILLNEED);
             log.info("madvise {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }
