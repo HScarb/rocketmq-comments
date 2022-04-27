@@ -41,6 +41,9 @@ import org.apache.rocketmq.srvutil.ServerUtil;
 import org.apache.rocketmq.srvutil.ShutdownHookThread;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Name server 启动类
+ */
 public class NamesrvStartup {
 
     private static InternalLogger log;
@@ -79,9 +82,12 @@ public class NamesrvStartup {
             return null;
         }
 
+        // 初始化 Name server 配置参数
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
+        // 初始化 Name server 网络配置（Netty 服务端配置）
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
         nettyServerConfig.setListenPort(9876);
+        // 使用 -c 指定配置文件路径
         if (commandLine.hasOption('c')) {
             String file = commandLine.getOptionValue('c');
             if (file != null) {
@@ -98,6 +104,7 @@ public class NamesrvStartup {
             }
         }
 
+        // 使用 -p 打印当前加载配置属性
         if (commandLine.hasOption('p')) {
             InternalLogger console = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_CONSOLE_NAME);
             MixAll.printObjectProperties(console, namesrvConfig);
@@ -105,6 +112,7 @@ public class NamesrvStartup {
             System.exit(0);
         }
 
+        // 加载命令行中指定的属性，形如 --listenPort 9876
         MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
 
         if (null == namesrvConfig.getRocketmqHome()) {
@@ -112,6 +120,7 @@ public class NamesrvStartup {
             System.exit(-2);
         }
 
+        // 初始化 Logback
         LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
         JoranConfigurator configurator = new JoranConfigurator();
         configurator.setContext(lc);
@@ -120,9 +129,11 @@ public class NamesrvStartup {
 
         log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
+        // 打印 Name server 配置参数
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
 
+        // 初始化 Name server 控制器
         final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
         // remember all configs to prevent discard
@@ -143,6 +154,7 @@ public class NamesrvStartup {
             System.exit(-3);
         }
 
+        // 注册 JVM 钩子函数，在 JVM 完全关闭之前，执行该方法，关闭 Name server
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
@@ -151,6 +163,7 @@ public class NamesrvStartup {
             }
         }));
 
+        // 启动 Name server
         controller.start();
 
         return controller;
