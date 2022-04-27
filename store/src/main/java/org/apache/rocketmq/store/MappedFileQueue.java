@@ -412,13 +412,19 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    /**
+     * 根据 CommitLog 最小 Offset 来删除 ConsumeQueue
+     * @param offset CommitLog 最小 Offset
+     * @param unitSize ConsumeQueue 每个索引项的长度
+     * @return 删除文件的数量
+     */
     public int deleteExpiredFileByOffset(long offset, int unitSize) {
         Object[] mfs = this.copyMappedFiles(0);
 
         List<MappedFile> files = new ArrayList<MappedFile>();
         int deleteCount = 0;
         if (null != mfs) {
-
+            // 最后一个文件处于写状态，不能删除
             int mfsLength = mfs.length - 1;
 
             for (int i = 0; i < mfsLength; i++) {
@@ -428,6 +434,7 @@ public class MappedFileQueue {
                 if (result != null) {
                     long maxOffsetInLogicQueue = result.getByteBuffer().getLong();
                     result.release();
+                    // 当前文件是否可以删除（最大 Offset 小于 CommitLog 最小 Offset）
                     destroy = maxOffsetInLogicQueue < offset;
                     if (destroy) {
                         log.info("physic min offset " + offset + ", logics in current mappedFile max offset "
