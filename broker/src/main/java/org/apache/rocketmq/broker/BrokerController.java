@@ -919,6 +919,7 @@ public class BrokerController {
             this.registerBrokerAll(true, false, true);
         }
 
+        // 开启定时任务，每 10s 向所有 name server 发送心跳
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
