@@ -38,6 +38,16 @@ public class Message implements Serializable {
         this(topic, "", "", 0, body, true);
     }
 
+    /**
+     * 消息构造方法
+     *
+     * @param topic 主题
+     * @param tags 用于消息过滤的标签
+     * @param keys 消息索引键，可以根据这些键值快速检索消息
+     * @param flag
+     * @param body
+     * @param waitStoreMsgOK 是否等消息存储完才返回
+     */
     public Message(String topic, String tags, String keys, int flag, byte[] body, boolean waitStoreMsgOK) {
         this.topic = topic;
         this.flag = flag;

@@ -66,10 +66,19 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 选择队列
+     * 上一次发送成功则选择下一个队列，上一次发送失败会规避上次发送的 MessageQueue 所在的 Broker
+     *
+     * @param lastBrokerName 上次发送的 Broker 名称，如果为空表示上次发送成功
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
+            // 轮询队列，选择下一个队列
             return selectOneMessageQueue();
         } else {
+            // 上次发送失败，规避上次发送的 MessageQueue 所在的 Broker
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int index = this.sendWhichQueue.incrementAndGet();
                 int pos = Math.abs(index) % this.messageQueueList.size();
@@ -85,6 +94,7 @@ public class TopicPublishInfo {
     }
 
     public MessageQueue selectOneMessageQueue() {
+        // 自增队列选择 index
         int index = this.sendWhichQueue.incrementAndGet();
         int pos = Math.abs(index) % this.messageQueueList.size();
         if (pos < 0)

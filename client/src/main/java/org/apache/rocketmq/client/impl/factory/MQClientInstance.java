@@ -177,9 +177,17 @@ public class MQClientInstance {
             MQVersion.getVersionDesc(MQVersion.CURRENT_VERSION), RemotingCommand.getSerializeTypeConfigInThisServer());
     }
 
+    /**
+     * 将 NameServer 返回的路由信息转换成 TopicPublishInfo
+     *
+     * @param topic
+     * @param route 路由信息
+     * @return
+     */
     public static TopicPublishInfo topicRouteData2TopicPublishInfo(final String topic, final TopicRouteData route) {
         TopicPublishInfo info = new TopicPublishInfo();
         info.setTopicRouteData(route);
+        // 该主题是顺序消息
         if (route.getOrderTopicConf() != null && route.getOrderTopicConf().length() > 0) {
             String[] brokers = route.getOrderTopicConf().split(";");
             for (String broker : brokers) {
@@ -193,9 +201,12 @@ public class MQClientInstance {
 
             info.setOrderTopic(true);
         } else {
+            // 将 QueueData 转换成 MessageQueue
             List<QueueData> qds = route.getQueueDatas();
             Collections.sort(qds);
+            // 遍历所有队列信息
             for (QueueData qd : qds) {
+                // 队列是否可写，如果没有写权限则继续遍历下一个队列
                 if (PermName.isWriteable(qd.getPerm())) {
                     BrokerData brokerData = null;
                     for (BrokerData bd : route.getBrokerDatas()) {
@@ -648,12 +659,22 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 请求 NameServer，更新路由信息
+     *
+     * @param topic 要更新的 topic
+     * @param isDefault true：更新默认路由；false：更新自定义路由
+     * @param defaultMQProducer
+     * @return 更新成功返回 true，否则返回 false
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
         try {
+            // 加锁
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
+                    // 使用默认主题查询
                     if (isDefault && defaultMQProducer != null) {
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                             clientConfig.getMqClientApiTimeout());
@@ -665,9 +686,11 @@ public class MQClientInstance {
                             }
                         }
                     } else {
+                        // 使用参数 topic 查询
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, clientConfig.getMqClientApiTimeout());
                     }
                     if (topicRouteData != null) {
+                        // 如果找到路由信息，则与本地缓存中的路由信息进行对比，判断路由信息是否发生变化
                         TopicRouteData old = this.topicRouteTable.get(topic);
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
                         if (!changed) {
@@ -676,17 +699,22 @@ public class MQClientInstance {
                             log.info("the topic[{}] route info changed, old[{}] ,new[{}]", topic, old, topicRouteData);
                         }
 
+                        // 如果发生变化，更新缓存的路由信息
                         if (changed) {
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
 
+                            // 更新 Broker 地址信息
                             for (BrokerData bd : topicRouteData.getBrokerDatas()) {
                                 this.brokerAddrTable.put(bd.getBrokerName(), bd.getBrokerAddrs());
                             }
 
                             // Update Pub info
+                            // 更新生产者路由信息
                             if (!producerTable.isEmpty()) {
+                                // 将 NameServer 获取到的路由信息转换格式
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
+                                // 更新 MQClientInstance 管辖的所有路由信息
                                 Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();
                                 while (it.hasNext()) {
                                     Entry<String, MQProducerInner> entry = it.next();

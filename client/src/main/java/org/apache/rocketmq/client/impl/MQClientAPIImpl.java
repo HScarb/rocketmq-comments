@@ -429,6 +429,9 @@ public class MQClientAPIImpl {
 
     }
 
+    /**
+     * 同步发送消息
+     */
     public SendResult sendMessage(
         final String addr,
         final String brokerName,

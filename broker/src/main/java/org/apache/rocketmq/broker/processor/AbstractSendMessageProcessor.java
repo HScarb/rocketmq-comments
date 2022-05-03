@@ -163,8 +163,21 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
         return response;
     }
 
+    /**
+     * 消息合法性检查
+     * 1. 检查 Broker 是否有写权限
+     * 2. 检查 topic 是否可以进行消息发送：默认主题不能发送消息
+     * 3. 从本地缓存中获取 topic 路由信息，如果获取不到，则让 NameServer 更新主题的路由信息
+     * 4. 检查队列合法性
+     *
+     * @param ctx
+     * @param requestHeader
+     * @param response
+     * @return
+     */
     protected RemotingCommand msgCheck(final ChannelHandlerContext ctx,
         final SendMessageRequestHeader requestHeader, final RemotingCommand response) {
+        // 检查 Broker 是否有写权限
         if (!PermName.isWriteable(this.brokerController.getBrokerConfig().getBrokerPermission())
             && this.brokerController.getTopicConfigManager().isOrderTopic(requestHeader.getTopic())) {
             response.setCode(ResponseCode.NO_PERMISSION);
@@ -173,6 +186,7 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
             return response;
         }
 
+        // 检查 topic 是否可以进行消息发送
         if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
             return response;
         }
@@ -180,6 +194,7 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
             return response;
         }
 
+        // 从本地缓存中获取 topic 路由信息，如果获取不到，则让 NameServer 更新主题的路由信息
         TopicConfig topicConfig =
             this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
         if (null == topicConfig) {
@@ -216,6 +231,7 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
             }
         }
 
+        // 检查队列合法性
         int queueIdInt = requestHeader.getQueueId();
         int idValid = Math.max(topicConfig.getWriteQueueNums(), topicConfig.getReadQueueNums());
         if (queueIdInt >= idValid) {

@@ -55,15 +55,28 @@ public class MQFaultStrategy {
         this.sendLatencyFaultEnable = sendLatencyFaultEnable;
     }
 
+    /**
+     * 选择发送的队列，根据是否启用 Broker 故障延迟机制走不同逻辑
+     *
+     * sendLatencyFaultEnable=false，默认不启用 Broker 故障延迟机制
+     * sendLatencyFaultEnable=true，启用 Broker 故障延迟机制
+     *
+     * @param tpInfo
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+        // 启用 Broker 故障延迟机制
         if (this.sendLatencyFaultEnable) {
             try {
+                // 轮询获取一个消息队列
                 int index = tpInfo.getSendWhichQueue().incrementAndGet();
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
                     int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
                     if (pos < 0)
                         pos = 0;
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
+                    // 验证该消息队列是否可用
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName()))
                         return mq;
                 }
@@ -86,10 +99,17 @@ public class MQFaultStrategy {
 
             return tpInfo.selectOneMessageQueue();
         }
-
+        // 不启用 Broker 故障延迟机制
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 
+    /**
+     * 处理发送异常，更新发送失败条目（Broker）
+     *
+     * @param brokerName Broker 名称
+     * @param currentLatency 本次发送延迟时间
+     * @param isolation 是否规避 Broker。true：规避该 Broker 30s；false：规避时间为本次消息发送延迟时间
+     */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
             long duration = computeNotAvailableDuration(isolation ? 30000 : currentLatency);
@@ -97,7 +117,15 @@ public class MQFaultStrategy {
         }
     }
 
+    /**
+     * 计算因本次消息发送故障需要规避 Broker 的时长。
+     * 即接下来多长时间内，该 Broker 不参与消息发送队列负载
+     *
+     * @param currentLatency 规避时长
+     * @return
+     */
     private long computeNotAvailableDuration(final long currentLatency) {
+        // 从 latencyMax 数组末尾开始查找，找到第一个小于当前延迟的数值下标，然后从 notAvailableDuration 数组中获取需要规避的时长
         for (int i = latencyMax.length - 1; i >= 0; i--) {
             if (currentLatency >= latencyMax[i])
                 return this.notAvailableDuration[i];

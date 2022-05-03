@@ -53,6 +53,16 @@ public class Validators {
         }
     }
 
+    /**
+     * 验证消息是否符合规范
+     * 主题名称、消息体不能为空
+     * 消息长度不能为 0
+     * 不能超过允许发送消息的最大长度 4MB
+     *
+     * @param msg
+     * @param defaultMQProducer
+     * @throws MQClientException
+     */
     public static void checkMessage(Message msg, DefaultMQProducer defaultMQProducer) throws MQClientException {
         if (null == msg) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message is null");

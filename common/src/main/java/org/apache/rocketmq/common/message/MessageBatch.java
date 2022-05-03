@@ -31,6 +31,9 @@ public class MessageBatch extends Message implements Iterable<Message> {
         this.messages = messages;
     }
 
+    /**
+     * 将批量详细编码成 字节数组，用于放入 RemotingCommand 的 body 域中
+     */
     public byte[] encode() {
         return MessageDecoder.encodeMessages(messages);
     }

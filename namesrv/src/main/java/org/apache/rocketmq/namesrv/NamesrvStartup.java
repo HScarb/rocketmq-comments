@@ -148,6 +148,7 @@ public class NamesrvStartup {
             throw new IllegalArgumentException("NamesrvController is null");
         }
 
+        // 初始化 NamesrvController：加载 KVConfig，初始化 Netty remoting server，添加定时任务
         boolean initResult = controller.initialize();
         if (!initResult) {
             controller.shutdown();
@@ -163,7 +164,7 @@ public class NamesrvStartup {
             }
         }));
 
-        // 启动 Name server
+        // 启动 NamesrvController，主要是启动 Netty remoting server
         controller.start();
 
         return controller;
