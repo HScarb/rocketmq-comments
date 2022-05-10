@@ -25,6 +25,9 @@ import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.PlainAccessConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 访问验证器接口
+ */
 public interface AccessValidator {
 
     /**

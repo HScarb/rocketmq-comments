@@ -46,12 +46,22 @@ public class PlainAccessValidator implements AccessValidator {
     private PlainPermissionManager aclPlugEngine;
 
     public PlainAccessValidator() {
+        // PlainPermissionManager 用作解析 plain_acl.yml 文件
         aclPlugEngine = new PlainPermissionManager();
     }
 
+    /**
+     * 从请求头中解析本次请求对应的访问权限，构建 AccessResource 对象，为后续的权限校验做准备
+     *
+     * @param request 请求对象
+     * @param remoteAddr
+     * @return
+     */
     @Override
     public AccessResource parse(RemotingCommand request, String remoteAddr) {
+        // 创建 PlainAccessResource 对象，用来表示一次请求需要访问的权限
         PlainAccessResource accessResource = new PlainAccessResource();
+        // 从远程地址中提取远程访问的 IP 地址
         if (remoteAddr != null && remoteAddr.contains(":")) {
             accessResource.setWhiteRemoteAddress(remoteAddr.substring(0, remoteAddr.lastIndexOf(':')));
         } else {
@@ -60,15 +70,18 @@ public class PlainAccessValidator implements AccessValidator {
 
         accessResource.setRequestCode(request.getCode());
 
+        // 如果请求中的扩展字段为空，直接返回资源，后续的访问控制只针对 IP 地址
         if (request.getExtFields() == null) {
             // If request's extFields is null,then return accessResource directly(users can use whiteAddress pattern)
             // The following logic codes depend on the request's extFields not to be null.
             return accessResource;
         }
+        // 从请求体中提取客户端的访问用户名、前面字符串、安全令牌
         accessResource.setAccessKey(request.getExtFields().get(SessionCredentials.ACCESS_KEY));
         accessResource.setSignature(request.getExtFields().get(SessionCredentials.SIGNATURE));
         accessResource.setSecretToken(request.getExtFields().get(SessionCredentials.SECURITY_TOKEN));
 
+        // 根据请求命令设置本次请求需要获得的权限
         try {
             switch (request.getCode()) {
                 case RequestCode.SEND_MESSAGE:
@@ -124,6 +137,7 @@ public class PlainAccessValidator implements AccessValidator {
             throw new AclException(t.getMessage(), t);
         }
 
+        // 对扩展字段进行排序（SortedMap），以便生成签名字符串
         // Content
         SortedMap<String, String> map = new TreeMap<String, String>();
         for (Map.Entry<String, String> entry : request.getExtFields().entrySet()) {
@@ -132,6 +146,7 @@ public class PlainAccessValidator implements AccessValidator {
                 map.put(entry.getKey(), entry.getValue());
             }
         }
+        // 将扩展字段和请求体写入 content 字段
         accessResource.setContent(AclUtils.combineRequestContent(request, map));
         return accessResource;
     }

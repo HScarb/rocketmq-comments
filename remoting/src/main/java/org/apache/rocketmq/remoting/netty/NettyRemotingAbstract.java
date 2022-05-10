@@ -199,11 +199,13 @@ public abstract class NettyRemotingAbstract {
                 @Override
                 public void run() {
                     try {
+                        // Broker 处理服务器钩子函数，在服务器收到请求并解码后，处理请求前调用
                         String remoteAddr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
                         doBeforeRpcHooks(remoteAddr, cmd);
                         final RemotingResponseCallback callback = new RemotingResponseCallback() {
                             @Override
                             public void callback(RemotingCommand response) {
+                                // Broker 处理服务器钩子函数，在处理完请求后，将结果返回
                                 doAfterRpcHooks(remoteAddr, cmd, response);
                                 if (!cmd.isOnewayRPC()) {
                                     if (response != null) {
@@ -221,6 +223,7 @@ public abstract class NettyRemotingAbstract {
                                 }
                             }
                         };
+                        // 处理远程请求
                         if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
                             processor.asyncProcessRequest(ctx, cmd, callback);
