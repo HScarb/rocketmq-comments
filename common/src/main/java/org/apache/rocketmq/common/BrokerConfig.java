@@ -54,8 +54,10 @@ public class BrokerConfig {
     @ImportantField
     private boolean autoCreateSubscriptionGroup = true;
     private String messageStorePlugIn = "";
+    // 消息轨迹消息默认存储的 Topic 名称
     @ImportantField
     private String msgTraceTopicName = TopicValidator.RMQ_SYS_TRACE_TOPIC;
+    // 是否使用默认 Topic 存储消息轨迹消息，默认 Topic 为 RMQ_SYS_TRACE_TOPIC，只有 1 个队列
     @ImportantField
     private boolean traceTopicEnable = false;
     /**
