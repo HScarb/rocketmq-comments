@@ -670,7 +670,7 @@ public class DefaultMessageStore implements MessageStore {
                                 }
                             }
 
-                            // 消息过滤
+                            // 消息过滤，先根据 ConsumeQueue 条目中的哈希码进行过滤，不匹配则直接跳过该条消息
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -691,6 +691,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 如果消息通过了 ConsumeQueue 的哈希码过滤，要从 CommitLog 中加载整个消息体，根据属性进行过滤
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {

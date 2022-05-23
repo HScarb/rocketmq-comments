@@ -451,10 +451,13 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             }
         }
 
+        // ====== 消息过滤相关 ======
         String subExpression = null;
         boolean classFilter = false;
+        // 获取订阅数据，包含过滤信息
         SubscriptionData sd = this.rebalanceImpl.getSubscriptionInner().get(pullRequest.getMessageQueue().getTopic());
         if (sd != null) {
+            // 如果不是类过滤模式，设置过滤表达式
             if (this.defaultMQPushConsumer.isPostSubscriptionWhenPull() && !sd.isClassFilterMode()) {
                 subExpression = sd.getSubString();
             }
@@ -462,6 +465,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             classFilter = sd.isClassFilterMode();
         }
 
+        // 根据过滤类型构建拉取时的系统标记
         int sysFlag = PullSysFlag.buildSysFlag(
             commitOffsetEnable, // commitOffset
             true, // suspend
