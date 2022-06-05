@@ -65,6 +65,11 @@ public class ClientConfig {
 
     private LanguageCode language = LanguageCode.JAVA;
 
+    /**
+     * 用 clientIp（本地IP）和 instanceName（DEFAULT）拼接成 clientId
+     *
+     * @return clientId，通常机器唯一，可以通过属性方式修改 instanceName
+     */
     public String buildMQClientId() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClientIP());

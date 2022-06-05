@@ -192,7 +192,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     this.defaultMQProducer.changeInstanceNameToPID();
                 }
 
-                // 创建 MQClientInstance 实例，整个 JVM 中只存在一个 MQClientInstance 实例
+                // 创建 MQClientInstance 实例
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
 
                 // 向 MQClientInstance 注册服务，将当前生产者加入 MQClientInstance 管理（加入 MQClientInstance.producerTable）
