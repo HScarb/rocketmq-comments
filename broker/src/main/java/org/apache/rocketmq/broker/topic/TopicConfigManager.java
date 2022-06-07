@@ -45,6 +45,10 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * Broker 上的 Topic 管理器，管理 Topic 配置
+ * Broker 会定时将 Topic 信息由心跳上报到 NameServer
+ */
 public class TopicConfigManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final long LOCK_TIMEOUT_MILLIS = 3000;
@@ -52,9 +56,10 @@ public class TopicConfigManager extends ConfigManager {
 
     private transient final Lock topicConfigTableLock = new ReentrantLock();
 
-    // 存放所有 Topic 和配置信息
+    // Topic 配置表，存放所有 Topic 和配置信息
     private final ConcurrentMap<String, TopicConfig> topicConfigTable =
         new ConcurrentHashMap<String, TopicConfig>(1024);
+    // Topic 数据版本号
     private final DataVersion dataVersion = new DataVersion();
     private transient BrokerController brokerController;
 
@@ -72,7 +77,10 @@ public class TopicConfigManager extends ConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
+            // 如果允许自动创建 Topic
             if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
+                // 初始化用来被自动创建 Topic 继承的默认 Topic
+                // 自动创建 Topic 创建前在客户端没有路由信息，会先从 NameServer 查询到这个默认 Topic 的路由信息
                 String topic = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
                 TopicConfig topicConfig = new TopicConfig(topic);
                 TopicValidator.addSystemTopic(topic);
@@ -80,12 +88,15 @@ public class TopicConfigManager extends ConfigManager {
                     .getDefaultTopicQueueNums());
                 topicConfig.setWriteQueueNums(this.brokerController.getBrokerConfig()
                     .getDefaultTopicQueueNums());
+                // 权限：增加可继承
                 int perm = PermName.PERM_INHERIT | PermName.PERM_READ | PermName.PERM_WRITE;
                 topicConfig.setPerm(perm);
+                // 将默认 Topic 加入 Topic 配置表
                 this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
             }
         }
         {
+            // 性能测试 Topic，用来被性能测试 example 代码调用
             String topic = TopicValidator.RMQ_SYS_BENCHMARK_TOPIC;
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
@@ -160,6 +171,7 @@ public class TopicConfigManager extends ConfigManager {
     }
 
     /**
+     * 为 Topic 创建配置项
      * 在 {@link org.apache.rocketmq.broker.processor.SendMessageProcessor#sendMessage(ChannelHandlerContext, RemotingCommand, SendMessageContext, SendMessageRequestHeader)} 方法中创建 Topic
      * 实际是在 {@link org.apache.rocketmq.broker.processor.AbstractSendMessageProcessor#msgCheck(ChannelHandlerContext, SendMessageRequestHeader, RemotingCommand)} 方法中被调用
      * 会将 Topic 保存到本地缓存 {@link TopicConfigManager#topicConfigTable}，随后上报到 NameServer
@@ -179,11 +191,11 @@ public class TopicConfigManager extends ConfigManager {
         try {
             if (this.topicConfigTableLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
-                    // 本地查询到 Topic，直接返回
+                    // 配置表中已经存在，直接返回
                     topicConfig = this.topicConfigTable.get(topic);
                     if (topicConfig != null)
                         return topicConfig;
-                    // 根据默认 Topic 获取 Config
+                    // 根据默认 Topic 获取 Topic 配置
                     TopicConfig defaultTopicConfig = this.topicConfigTable.get(defaultTopic);
                     if (defaultTopicConfig != null) {
                         // 如果默认 Topic 是自动创建 Topic 的 Key
@@ -197,6 +209,7 @@ public class TopicConfigManager extends ConfigManager {
                             // 创建新 Topic，继承默认 Topic 的配置信息
                             topicConfig = new TopicConfig(topic);
 
+                            // 继承默认 Topic 创建新 Topic
                             int queueNums = Math.min(clientDefaultTopicQueueNums, defaultTopicConfig.getWriteQueueNums());
 
                             if (queueNums < 0) {
@@ -212,6 +225,7 @@ public class TopicConfigManager extends ConfigManager {
                             topicConfig.setTopicSysFlag(topicSysFlag);
                             topicConfig.setTopicFilterType(defaultTopicConfig.getTopicFilterType());
                         } else {
+                            // 默认 Topic 不存在，不允许自动创建 Topic
                             log.warn("Create new topic failed, because the default topic[{}] has no perm [{}] producer:[{}]",
                                 defaultTopic, defaultTopicConfig.getPerm(), remoteAddress);
                         }
@@ -243,6 +257,7 @@ public class TopicConfigManager extends ConfigManager {
             log.error("createTopicInSendMessageMethod exception", e);
         }
 
+        // 如果创建了新 Topic 配置项，更新到 NameServer
         if (createNew) {
             this.brokerController.registerBrokerAll(false, true, true);
         }
@@ -445,6 +460,10 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
+    /**
+     * 构造用于心跳请求体，将 Topic 配置和版本号由心跳包发往 NameServer
+     * @return
+     */
     public TopicConfigSerializeWrapper buildTopicConfigSerializeWrapper() {
         TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
         topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);

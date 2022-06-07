@@ -815,7 +815,9 @@ public class RouteInfoManager {
 }
 
 class BrokerLiveInfo {
+    // 上次上报时间
     private long lastUpdateTimestamp;
+    //
     private DataVersion dataVersion;
     private Channel channel;
     private String haServerAddr;
