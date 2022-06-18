@@ -90,6 +90,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         asyncProcessRequest(ctx, request).thenAcceptAsync(responseCallback::callback, this.brokerController.getPutMessageFutureExecutor());
     }
 
+    /**
+     * 处理客户端发送消息的请求
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     public CompletableFuture<RemotingCommand> asyncProcessRequest(ChannelHandlerContext ctx,
                                                                   RemotingCommand request) throws RemotingCommandException {
         final SendMessageContext mqtraceContext;
@@ -266,10 +274,22 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         });
     }
 
-
+    /**
+     * 处理客户端的发送消息请求
+     * 1. 检查消息合法性检查
+     * 2. 如果消息重试次数超过最大重试次数，消息将进入 DLQ 死信队列。
+     * 3. 将消息保存到存储
+     *
+     * @param ctx
+     * @param request
+     * @param mqtraceContext
+     * @param requestHeader
+     * @return
+     */
     private CompletableFuture<RemotingCommand> asyncSendMessage(ChannelHandlerContext ctx, RemotingCommand request,
                                                                 SendMessageContext mqtraceContext,
                                                                 SendMessageRequestHeader requestHeader) {
+        // 构造Response，包含消息合法性检查
         final RemotingCommand response = preSend(ctx, request, requestHeader);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader)response.readCustomHeader();
 
@@ -286,10 +306,12 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             queueIdInt = randomQueueId(topicConfig.getWriteQueueNums());
         }
 
+        // 构造存储用的Message对象
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(requestHeader.getTopic());
         msgInner.setQueueId(queueIdInt);
 
+        // 判断发过来的消息是否已经到达重新消费的重试最大次数，进入死信队列
         if (!handleRetryAndDLQ(requestHeader, response, request, msgInner, topicConfig)) {
             return CompletableFuture.completedFuture(response);
         }
@@ -315,6 +337,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
         }
 
+        // 保存到消息存储
         CompletableFuture<PutMessageResult> putMessageResult = null;
         String transFlag = origProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         if (transFlag != null && Boolean.parseBoolean(transFlag)) {

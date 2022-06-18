@@ -602,6 +602,23 @@ public class MQClientAPIImpl {
         }
     }
 
+    /**
+     * 异步发送错误处理逻辑
+     *
+     * @param brokerName
+     * @param msg
+     * @param timeoutMillis
+     * @param request
+     * @param sendCallback
+     * @param topicPublishInfo
+     * @param instance
+     * @param timesTotal
+     * @param curTimes
+     * @param e
+     * @param context
+     * @param needRetry
+     * @param producer
+     */
     private void onExceptionImpl(final String brokerName,
         final Message msg,
         final long timeoutMillis,

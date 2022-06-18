@@ -181,6 +181,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     public void start(final boolean startFactory) throws MQClientException {
         switch (this.serviceState) {
+            // 如果状态为 CREATE_JUST，执行启动逻辑。该对象创建时默认状态为 CREATE_JUST
             case CREATE_JUST:
                 this.serviceState = ServiceState.START_FAILED;
 
@@ -227,6 +228,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 break;
         }
 
+        // 启动后马上向 NameServer 发送心跳
         this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
 
         RequestFutureHolder.getInstance().startScheduledTask(this);
@@ -599,6 +601,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             int timesTotal = communicationMode == CommunicationMode.SYNC ? 1 + this.defaultMQProducer.getRetryTimesWhenSendFailed() : 1;
             int times = 0;
             String[] brokersSent = new String[timesTotal];
+            // 循环执行发送，处理同步发送重试。同步发送共重试timesTotal次，默认为2次，异步发送只执行一次
             for (; times < timesTotal; times++) {
                 String lastBrokerName = null == mq ? null : mq.getBrokerName();
                 // 选择消息队列
@@ -766,7 +769,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         // 根据 MessageQueue 获取 Broker 的网络地址
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
-            // 如果 MQClientInstance 的 brokerAddrTable 未缓存该 Broker 信息，则从 NameServer 主动更新 topic 路由信息
+            // 如果 MQClientInstance 的 brokerAddrTable 未缓存该 Broker 信息，则从 NameServer 主动拉取 topic 路由信息
             tryToFindTopicPublishInfo(mq.getTopic());
             brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         }

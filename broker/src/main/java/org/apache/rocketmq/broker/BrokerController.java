@@ -571,6 +571,11 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 创建和注册Broker请求处理类
+     * RocketMQ按照业务逻辑区分请求处理器，每个类型的请求码对应一个业务处理器（NettyRequestProcessor）
+     * 这样就实现了为不同请求码设置对应线程池，实现不同请求线程池的隔离
+     */
     public void registerProcessor() {
         /**
          * SendMessageProcessor
