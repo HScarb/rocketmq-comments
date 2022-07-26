@@ -948,8 +948,14 @@ public class BrokerController {
 
     }
 
+    /**
+     * 增量更新元数据修改到所有 Nameserver
+     * @param topicConfig
+     * @param dataVersion
+     */
     public synchronized void registerIncrementBrokerData(TopicConfig topicConfig, DataVersion dataVersion) {
         TopicConfig registerTopicConfig = topicConfig;
+        // 根据 Broker 的读写权限，修改 Topic 的读写权限
         if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
             || !PermName.isReadable(this.getBrokerConfig().getBrokerPermission())) {
             registerTopicConfig =
@@ -957,12 +963,14 @@ public class BrokerController {
                     this.brokerConfig.getBrokerPermission());
         }
 
+        // 构造增量修改的 Topic 元数据表
         ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
         topicConfigTable.put(topicConfig.getTopicName(), registerTopicConfig);
         TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
         topicConfigSerializeWrapper.setDataVersion(dataVersion);
         topicConfigSerializeWrapper.setTopicConfigTable(topicConfigTable);
 
+        // 将 Broker 元数据更新到 Nameserver
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
     }
 

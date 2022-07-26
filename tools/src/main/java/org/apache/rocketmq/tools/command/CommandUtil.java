@@ -76,16 +76,30 @@ public class CommandUtil {
         return masterAndSlaveMap;
     }
 
+    /**
+     * 根据集群名称，获取集群中所有 Broker 主节点的地址
+     * @param adminExt
+     * @param clusterName
+     * @return
+     * @throws InterruptedException
+     * @throws RemotingConnectException
+     * @throws RemotingTimeoutException
+     * @throws RemotingSendRequestException
+     * @throws MQBrokerException
+     */
     public static Set<String> fetchMasterAddrByClusterName(final MQAdminExt adminExt, final String clusterName)
         throws InterruptedException, RemotingConnectException, RemotingTimeoutException,
         RemotingSendRequestException, MQBrokerException {
         Set<String> masterSet = new HashSet<String>();
 
+        // 获取集群信息（集群中 Broker 地址）
         ClusterInfo clusterInfoSerializeWrapper = adminExt.examineBrokerClusterInfo();
 
+        // 获取 Broker 名称列表
         Set<String> brokerNameSet = clusterInfoSerializeWrapper.getClusterAddrTable().get(clusterName);
 
         if (brokerNameSet != null) {
+            // 获取 Broker 主节点地址
             for (String brokerName : brokerNameSet) {
                 BrokerData brokerData = clusterInfoSerializeWrapper.getBrokerAddrTable().get(brokerName);
                 if (brokerData != null) {

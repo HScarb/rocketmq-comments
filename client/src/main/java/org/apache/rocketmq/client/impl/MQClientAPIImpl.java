@@ -270,9 +270,21 @@ public class MQClientAPIImpl {
 
     }
 
+    /**
+     * 创建 Topic 请求调用
+     * @param addr
+     * @param defaultTopic
+     * @param topicConfig
+     * @param timeoutMillis
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     * @throws MQClientException
+     */
     public void createTopic(final String addr, final String defaultTopic, final TopicConfig topicConfig,
         final long timeoutMillis)
         throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        // 构建请求头
         CreateTopicRequestHeader requestHeader = new CreateTopicRequestHeader();
         requestHeader.setTopic(topicConfig.getTopicName());
         requestHeader.setDefaultTopic(defaultTopic);

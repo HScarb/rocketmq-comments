@@ -201,14 +201,16 @@ public class MQClientInstance {
 
             info.setOrderTopic(true);
         } else {
+            // 普通主题
             // 将 QueueData 转换成 MessageQueue
             List<QueueData> qds = route.getQueueDatas();
             Collections.sort(qds);
-            // 遍历所有队列信息
+            // 遍历所有 Broker 上该队列的信息
             for (QueueData qd : qds) {
-                // 队列是否可写，如果没有写权限则继续遍历下一个队列
+                // 该 Broker 上的该队列是否可写，如果没有写权限则继续遍历下一个 Broker 上的队列信息
                 if (PermName.isWriteable(qd.getPerm())) {
                     BrokerData brokerData = null;
+                    // 获取对应 Broker 信息
                     for (BrokerData bd : route.getBrokerDatas()) {
                         if (bd.getBrokerName().equals(qd.getBrokerName())) {
                             brokerData = bd;
@@ -220,10 +222,12 @@ public class MQClientInstance {
                         continue;
                     }
 
+                    // Broker 非主，跳过
                     if (!brokerData.getBrokerAddrs().containsKey(MixAll.MASTER_ID)) {
                         continue;
                     }
 
+                    // 新建 MessageQueue，加入 Topic 元数据的列表中存储
                     for (int i = 0; i < qd.getWriteQueueNums(); i++) {
                         MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
                         info.getMessageQueueList().add(mq);
