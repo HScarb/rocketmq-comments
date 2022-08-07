@@ -23,6 +23,16 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
+/**
+ * Topic发送配置信息，用于消息生产
+ * <p>
+ * 一个Topic对应一个TopicPublishInfo
+ * <p>
+ * 一个TopicPublishInfo中有多个MessageQueue
+ * <p>
+ * MessageQueue可以是一个Broker中对应的Queue，也可以是多台Broker，取决于TOpic的创建
+ * 如果Topic在多个Broker中都创建了，那么就这些Queue就包含多台Broker中的Queue
+ */
 public class TopicPublishInfo {
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;

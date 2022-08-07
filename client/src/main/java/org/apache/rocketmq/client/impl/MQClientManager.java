@@ -26,7 +26,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.RPCHook;
 
 /**
- * 客户端实例管理器
+ * 客户端实例 MQClientInstance 管理器
  * 单例
  */
 public class MQClientManager {

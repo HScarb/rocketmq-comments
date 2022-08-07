@@ -226,9 +226,25 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 同步拉取消息
+     *
+     * @param mq 消息队列
+     * @param subscriptionData 订阅信息
+     * @param offset 消费偏移量
+     * @param maxNums
+     * @param block
+     * @param timeout
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     private PullResult pullSyncImpl(MessageQueue mq, SubscriptionData subscriptionData, long offset, int maxNums, boolean block,
         long timeout)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // 消费者运行状态检查
         this.isRunning();
 
         if (null == mq) {
@@ -243,13 +259,16 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
             throw new MQClientException("maxNums <= 0", null);
         }
 
+        // 如果没有订阅 Topic，自定添加订阅
         this.subscriptionAutomatically(mq.getTopic());
 
+        // 构建消息拉取标记
         int sysFlag = PullSysFlag.buildSysFlag(false, block, true, false);
 
         long timeoutMillis = block ? this.defaultMQPullConsumer.getConsumerTimeoutMillisWhenSuspend() : timeout;
 
         boolean isTagType = ExpressionType.isTagType(subscriptionData.getExpressionType());
+        // 发送拉取消息请求给 Broker，拉取消息
         PullResult pullResult = this.pullAPIWrapper.pullKernelImpl(
             mq,
             subscriptionData.getSubString(),
@@ -264,6 +283,7 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
             CommunicationMode.SYNC,
             null
         );
+        // 处理拉取结果，将二进制消息解析成对象
         this.pullAPIWrapper.processPullResult(mq, pullResult, subscriptionData);
         //If namespace is not null , reset Topic without namespace.
         this.resetTopic(pullResult.getMsgFoundList());
@@ -297,6 +317,11 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
 
     }
 
+    /**
+     * 如果拉消费者没有订阅 Topic，自动添加订阅关系
+     *
+     * @param topic
+     */
     public void subscriptionAutomatically(final String topic) {
         if (!this.rebalanceImpl.getSubscriptionInner().containsKey(topic)) {
             try {

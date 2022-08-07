@@ -86,25 +86,27 @@ import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 /**
- * 客户端实例
+ * 客户端实例，代表一个客户端。一般每个 JVM 进程只会有一个，如果 clientId 不同可以创建多个
+ * 所有的生产者、消费者共用一个 MQClientInstance
  */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
     private final ClientConfig clientConfig;
     private final int instanceIndex;
+    // 客户端实例唯一标识
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
     /**
-     * 生产者信息
-     * Key：groupName
+     * 全部生产者表
+     * Key：groupName 生产者组名
      * Value: Producer
      * 一个GroupName在一个MQClientInstance上，只能有一个Producer
      */
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
     /**
-     * 消费者信息
-     * Key:groupName
+     * 全部消费者表
+     * Key:groupName 消费者组名
      * Value:Consumer
      * 在一个MQClientInstance上，一个groupName中只能有一个Consumer
      */
@@ -588,15 +590,20 @@ public class MQClientInstance {
         return false;
     }
 
+    /**
+     * 发送心跳给所有的 Broker
+     */
     private void sendHeartbeatToAllBroker() {
         final HeartbeatData heartbeatData = this.prepareHeartbeatData();
         final boolean producerEmpty = heartbeatData.getProducerDataSet().isEmpty();
         final boolean consumerEmpty = heartbeatData.getConsumerDataSet().isEmpty();
+        // 没有生产者或者消费者，无需发送心跳
         if (producerEmpty && consumerEmpty) {
             log.warn("sending heartbeat, but no consumer and no producer. [{}]", this.clientId);
             return;
         }
 
+        // 遍历所有 Broker，对每台发送心跳
         if (!this.brokerAddrTable.isEmpty()) {
             long times = this.sendHeartbeatTimesTotal.getAndIncrement();
             Iterator<Entry<String, HashMap<Long, String>>> it = this.brokerAddrTable.entrySet().iterator();
@@ -609,6 +616,7 @@ public class MQClientInstance {
                         Long id = entry1.getKey();
                         String addr = entry1.getValue();
                         if (addr != null) {
+                            // 如果没有消费者，且该 Broker 不是主节点，不用发送心跳
                             if (consumerEmpty) {
                                 if (id != MixAll.MASTER_ID)
                                     continue;
@@ -768,6 +776,13 @@ public class MQClientInstance {
         return false;
     }
 
+    /**
+     * 构造客户端心跳包数据，上报给 Broker
+     * 1. 客户端 ID
+     * 2. 消费者的信息
+     * 3. 生产者信息
+     * @return 心跳包数据
+     */
     private HeartbeatData prepareHeartbeatData() {
         HeartbeatData heartbeatData = new HeartbeatData();
 
@@ -1028,7 +1043,11 @@ public class MQClientInstance {
         this.rebalanceService.wakeup();
     }
 
+    /**
+     * 为所有消费者执行重平衡
+     */
     public void doRebalance() {
+        // 遍历已注册消费者，执行重平衡方法
         for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
             MQConsumerInner impl = entry.getValue();
             if (impl != null) {
@@ -1106,6 +1125,12 @@ public class MQClientInstance {
         return 0;
     }
 
+    /**
+     * 从 Broker 获取消费组内所有消费组的客户端 ID
+     * @param topic
+     * @param group
+     * @return
+     */
     public List<String> findConsumerIdList(final String topic, final String group) {
         String brokerAddr = this.findBrokerAddrByTopic(topic);
         if (null == brokerAddr) {

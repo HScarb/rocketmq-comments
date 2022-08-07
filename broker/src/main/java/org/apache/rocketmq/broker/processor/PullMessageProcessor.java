@@ -93,7 +93,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
     }
 
     /**
-     * 处理客户端请求入口
+     * 处理客户端拉取请求入口
      *
      * @param channel 网络通道，通过该通道向消息拉取客户端发送响应结果
      * @param request 消息拉取请求
@@ -505,7 +505,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             response.setRemark("store getMessage return null");
         }
 
-        // // 存储Consumer消费进度：如果CommitLog可用且当前节点为主节点，则更新消费进度
+        // 存储Consumer消费进度：如果CommitLog可用且当前节点为主节点，则更新消费进度
         boolean storeOffsetEnable = brokerAllowSuspend; // 说明是首次调用，相对于长轮询通知
         storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;   // 说明Consumer设置了标志位
         storeOffsetEnable = storeOffsetEnable   // 只有Master支持存储offset

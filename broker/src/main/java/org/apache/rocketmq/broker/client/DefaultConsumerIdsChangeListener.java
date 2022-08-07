@@ -24,6 +24,11 @@ import java.util.List;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
+/**
+ * 消费者 Id 变化监听器
+ * Broker 端根据消费者上报的心跳判断消费者是否发生变化
+ * 如发生变化，向消费者发送重平衡请求
+ */
 public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListener {
     private final BrokerController brokerController;
 
@@ -38,12 +43,15 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
         }
         switch (event) {
             case CHANGE:
+                // 如果发生变化，向所有消费者发送重平衡请求
                 if (args == null || args.length < 1) {
                     return;
                 }
+                // 获取消费组中所有消费者的 Channel
                 List<Channel> channels = (List<Channel>) args[0];
                 if (channels != null && brokerController.getBrokerConfig().isNotifyConsumerIdsChangedEnable()) {
                     for (Channel chl : channels) {
+                        // 发送重平衡请求
                         this.brokerController.getBroker2Client().notifyConsumerIdsChanged(chl, group);
                     }
                 }
