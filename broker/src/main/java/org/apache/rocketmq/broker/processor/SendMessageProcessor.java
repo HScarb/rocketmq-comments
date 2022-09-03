@@ -161,7 +161,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return CompletableFuture.completedFuture(response);
         }
 
-        // 如果重试队列数量为 0，说明该消费组不支持重试，返回成功并丢弃消息。
+        // 如果重试队列数量为 0，说明该消费组不支持重试，返回成功并丢弃消息
         if (subscriptionGroupConfig.getRetryQueueNums() <= 0) {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
@@ -220,7 +220,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
         }
 
-        // 死信消息处理，如果重试次数超过 maxReconsumeTimes，会改变 Topic 为 %DLQ%{消费者组}
+        // 死信消息处理，如果 > 0，表示由客户端控制重试次数
+        // 如果重试次数超过 maxReconsumeTimes，或者小于 0，会放入死信队列。改变 Topic 为 %DLQ%{消费者组}
         if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
             || delayLevel < 0) {
             newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
@@ -237,6 +238,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }
             msgExt.setDelayTimeLevel(0);
         } else {
+            // 如果是 0，表示由 Broker 端控制延迟时间，将延迟等级设置为：重新消费次数 + 3
             if (0 == delayLevel) {
                 delayLevel = 3 + msgExt.getReconsumeTimes();
             }
@@ -257,6 +259,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setBornTimestamp(msgExt.getBornTimestamp());
         msgInner.setBornHost(msgExt.getBornHost());
         msgInner.setStoreHost(msgExt.getStoreHost());
+        // 重新消费次数 +1，下次重新消费的延迟等级根据该值来确定
         msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
 
         // 保存源消息的 ID

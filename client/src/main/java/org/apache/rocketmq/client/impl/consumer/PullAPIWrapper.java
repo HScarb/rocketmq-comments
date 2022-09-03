@@ -219,7 +219,7 @@ public class PullAPIWrapper {
                 }
             }
             int sysFlagInner = sysFlag;
-             // 如果是子节点，这把CommitOffset位去掉
+             // 如果是子节点，把CommitOffset位去掉
              // 因为子节点不保存消费者的Offset值，只有主节点才保存，所以如果是从子节点拉消息，就不能把这个位设为有效
             if (findBrokerResult.isSlave()) {
                 sysFlagInner = PullSysFlag.clearCommitOffsetFlag(sysFlagInner);

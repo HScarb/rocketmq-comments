@@ -441,7 +441,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             }
         };
 
-        // 构建消息拉取系统标记
+        // 偏移量提交计算
         boolean commitOffsetEnable = false;
         long commitOffsetValue = 0L;
         if (MessageModel.CLUSTERING == this.defaultMQPushConsumer.getMessageModel()) {
@@ -1106,6 +1106,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 持久化消费者正在消费队列的消费进度
+     * 广播模式：持久化到消费者本地
+     * 集群模式：发送请求给 Broker，包含了消费者内存中的要提交的 offset，让 Broker 持久化
+     */
     @Override
     public void persistConsumerOffset() {
         try {
@@ -1242,9 +1247,17 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         return queueTimeSpan;
     }
 
+    /**
+     * 恢复重试消息主题名
+     * 重试消息是延迟消息，会发送到延迟消息主题，真正的主题名会被放入消息属性
+     *
+     * @param msgs 本次消费请求消费的消息
+     * @param consumerGroup 消费组
+     */
     public void resetRetryAndNamespace(final List<MessageExt> msgs, String consumerGroup) {
         final String groupTopic = MixAll.getRetryTopic(consumerGroup);
         for (MessageExt msg : msgs) {
+            // 如果是重试消息，将真正的主题从消息属性中取出来，设置给该消息
             String retryTopic = msg.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
             if (retryTopic != null && groupTopic.equals(msg.getTopic())) {
                 msg.setTopic(retryTopic);

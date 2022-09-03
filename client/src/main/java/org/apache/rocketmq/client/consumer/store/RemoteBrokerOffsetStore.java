@@ -44,6 +44,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     private final static InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mQClientFactory;
     private final String groupName;
+    // 内存中缓存消费进度，定时上报到 Broker 持久化
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 
@@ -56,6 +57,13 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     public void load() {
     }
 
+    /**
+     * 更新消费进度到内存缓存
+     *
+     * @param mq 消息队列
+     * @param offset 消费进度
+     * @param increaseOnly 只增加
+     */
     @Override
     public void updateOffset(MessageQueue mq, long offset, boolean increaseOnly) {
         if (mq != null) {
@@ -119,7 +127,8 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     }
 
     /**
-     * 持久化消费进度到磁盘
+     * 持久化消费进度
+     * 发送请求给 Broker，让 Broker 持久化消费进度到磁盘
      *
      * @param mqs
      */
@@ -212,6 +221,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     @Override
     public void updateConsumeOffsetToBroker(MessageQueue mq, long offset, boolean isOneway) throws RemotingException,
         MQBrokerException, InterruptedException, MQClientException {
+        // 获取 Broker 地址
         FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);
         if (null == findBrokerResult) {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());

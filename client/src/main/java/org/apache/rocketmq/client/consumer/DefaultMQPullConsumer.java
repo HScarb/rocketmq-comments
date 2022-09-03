@@ -376,6 +376,13 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         this.defaultMQPullConsumerImpl.pullBlockIfNotFound(queueWithNamespace(mq), subExpression, offset, maxNums, pullCallback);
     }
 
+    /**
+     * 拉模式消费者，主动更新消费偏移量
+     *
+     * @param mq
+     * @param offset
+     * @throws MQClientException
+     */
     @Override
     public void updateConsumeOffset(MessageQueue mq, long offset) throws MQClientException {
         this.defaultMQPullConsumerImpl.updateConsumeOffset(queueWithNamespace(mq), offset);

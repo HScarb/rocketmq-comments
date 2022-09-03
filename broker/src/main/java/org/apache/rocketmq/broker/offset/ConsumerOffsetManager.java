@@ -33,10 +33,14 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 消费者消费进度管理器
+ */
 public class ConsumerOffsetManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     protected static final String TOPIC_GROUP_SEPARATOR = "@";
 
+    // 消费进度缓存，定期持久化到磁盘
     protected ConcurrentMap<String/* topic@group */, ConcurrentMap<Integer, Long>> offsetTable =
         new ConcurrentHashMap<String, ConcurrentMap<Integer, Long>>(512);
 
@@ -118,6 +122,15 @@ public class ConsumerOffsetManager extends ConfigManager {
         return groups;
     }
 
+    /**
+     * 持久化消费进度
+     *
+     * @param clientHost
+     * @param group
+     * @param topic
+     * @param queueId
+     * @param offset
+     */
     public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
         final long offset) {
         // topic@group
