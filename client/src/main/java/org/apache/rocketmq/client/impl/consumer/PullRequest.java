@@ -30,6 +30,7 @@ public class PullRequest {
     private ProcessQueue processQueue;
     // 待拉取的 MessageQueue 偏移量
     private long nextOffset;
+    // 之前是否被锁定过（判断是否是第一次拉取）
     private boolean previouslyLocked = false;
 
     public boolean isPreviouslyLocked() {

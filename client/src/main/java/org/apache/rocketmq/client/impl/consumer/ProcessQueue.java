@@ -309,6 +309,7 @@ public class ProcessQueue {
 
     /**
      * 将顺序消费时消息暂存的 TreeMap 清空
+     *
      * @return
      */
     public long commit() {
@@ -356,7 +357,8 @@ public class ProcessQueue {
     }
 
     /**
-     * 获取消息，顺序消费使用
+     * 从处理队列中获取消息并弹出，顺序消费使用
+     *
      * @param batchSize 一批消息的数量
      * @return
      */

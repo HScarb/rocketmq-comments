@@ -365,6 +365,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
      * @return
      */
     public boolean sendMessageBack(final MessageExt msg, final ConsumeConcurrentlyContext context) {
+        // 获取延迟等级，默认为 0，表示由 Broker 端控制延迟等级
+        // Broker 端将延迟等级设置为重试消费次数 + 3
         int delayLevel = context.getDelayLevelWhenNextConsume();
 
         // Wrap topic with namespace before sending back message.

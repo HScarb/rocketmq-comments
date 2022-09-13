@@ -123,8 +123,14 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * 根据该实例负载的消息队列，构造处理队列表
+     *
+     * @return Map，key：Broker 名称；Value：负载的消息队列集合
+     */
     private HashMap<String/* brokerName */, Set<MessageQueue>> buildProcessQueueTableByBrokerName() {
         HashMap<String, Set<MessageQueue>> result = new HashMap<String, Set<MessageQueue>>();
+        // 从重平衡服务保存的处理队列映射表中遍历所有消息队列
         for (MessageQueue mq : this.processQueueTable.keySet()) {
             Set<MessageQueue> mqs = result.get(mq.getBrokerName());
             if (null == mqs) {
@@ -138,18 +144,29 @@ public abstract class RebalanceImpl {
         return result;
     }
 
+    /**
+     * 锁定消息队列，向 Broker 发请求
+     * 顺序消费时使用
+     *
+     * @param mq 要锁定的消息队列
+     * @return 是否锁定成功
+     */
     public boolean lock(final MessageQueue mq) {
+        // 查询 Broker 地址
         FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);
         if (findBrokerResult != null) {
+            // 构造锁定消息队列请求
             LockBatchRequestBody requestBody = new LockBatchRequestBody();
             requestBody.setConsumerGroup(this.consumerGroup);
             requestBody.setClientId(this.mQClientFactory.getClientId());
             requestBody.getMqSet().add(mq);
 
             try {
+                // 调用 API 向 Broker 发送锁定队列请求，返回锁定成功的队列集合
                 Set<MessageQueue> lockedMq =
                     this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
                 for (MessageQueue mmqq : lockedMq) {
+                    // 将锁定成功队列的处理队列加锁
                     ProcessQueue processQueue = this.processQueueTable.get(mmqq);
                     if (processQueue != null) {
                         processQueue.setLocked(true);
@@ -171,7 +188,11 @@ public abstract class RebalanceImpl {
         return false;
     }
 
+    /**
+     * 为分配给该消费者的消息队列加锁
+     */
     public void lockAll() {
+        // 获取 Broker 名称和负载的消息队列映射表
         HashMap<String, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();
 
         Iterator<Entry<String, Set<MessageQueue>>> it = brokerMqs.entrySet().iterator();
@@ -185,16 +206,19 @@ public abstract class RebalanceImpl {
 
             FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);
             if (findBrokerResult != null) {
+                // 构造消息队列锁定请求
                 LockBatchRequestBody requestBody = new LockBatchRequestBody();
                 requestBody.setConsumerGroup(this.consumerGroup);
                 requestBody.setClientId(this.mQClientFactory.getClientId());
                 requestBody.setMqSet(mqs);
 
                 try {
+                    // 向 Broker 发送请求锁定消息队列，返回锁定成功的消息队列集合
                     Set<MessageQueue> lockOKMQSet =
                         this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
 
                     for (MessageQueue mq : lockOKMQSet) {
+                        // 锁定消息队列对应的处理队列
                         ProcessQueue processQueue = this.processQueueTable.get(mq);
                         if (processQueue != null) {
                             if (!processQueue.isLocked()) {
@@ -205,6 +229,7 @@ public abstract class RebalanceImpl {
                             processQueue.setLastLockTimestamp(System.currentTimeMillis());
                         }
                     }
+                    // 将本次锁定失败的处理队列解锁
                     for (MessageQueue mq : mqs) {
                         if (!lockOKMQSet.contains(mq)) {
                             ProcessQueue processQueue = this.processQueueTable.get(mq);
@@ -417,10 +442,12 @@ public abstract class RebalanceImpl {
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         // 为每个 MessageQueue 新建一个 PullRequest
         for (MessageQueue mq : mqSet) {
+            // 本地缓存的 ProcessQueue 中不包含，表示新增队列
             if (!this.processQueueTable.containsKey(mq)) {
-                // 本地缓存的 ProcessQueue 中不包含，表示新增队列
+                // 如果是顺序消费，尝试给处理队列加锁：尝试向 Broker 发送锁定队列请求。如果加锁失败则跳过，在下一次重平衡时尝试加锁
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
+                    // 顺序消费，锁定处理队列失败，跳过拉取
                     continue;
                 }
 

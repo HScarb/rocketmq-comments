@@ -283,13 +283,16 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 return;
             }
         } else {
-            // 处理顺序消费
+            // 处理顺序消费，如果处理队列已经被锁定
             if (processQueue.isLocked()) {
+                // 如果之前没有被锁定过（是第一次拉取）
                 if (!pullRequest.isPreviouslyLocked()) {
                     long offset = -1L;
                     try {
+                        // 计算拉取偏移量
                         offset = this.rebalanceImpl.computePullFromWhereWithException(pullRequest.getMessageQueue());
                     } catch (Exception e) {
+                        // 计算异常，等待 3s 后再次判断
                         this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
                         log.error("Failed to compute pull offset, pullResult: {}", pullRequest, e);
                         return;
@@ -302,17 +305,20 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                             pullRequest, offset);
                     }
 
+                    // 设置之前已经锁定过
                     pullRequest.setPreviouslyLocked(true);
+                    // 设置要拉取的偏移量，在方法后面的逻辑中立即执行拉取
                     pullRequest.setNextOffset(offset);
                 }
             } else {
+                // 如果处理队列没有被锁定，等待 3s 后将 PullRequest 放入拉取请求队列，再次判断锁定情况尝试拉取
                 this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
                 log.info("pull message later because not locked in broker, {}", pullRequest);
                 return;
             }
         }
         // ====== 流控 end ======
-        
+
         // 拉取该主题订阅信息
         final SubscriptionData subscriptionData = this.rebalanceImpl.getSubscriptionInner().get(pullRequest.getMessageQueue().getTopic());
         // 如果为空，延迟3s后拉取
