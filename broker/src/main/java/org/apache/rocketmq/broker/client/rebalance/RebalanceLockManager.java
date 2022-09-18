@@ -35,6 +35,7 @@ public class RebalanceLockManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.REBALANCE_LOCK_LOGGER_NAME);
     private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
         "rocketmq.broker.rebalance.lockMaxLiveTime", "60000"));
+    // 锁容器读写锁
     private final Lock lock = new ReentrantLock();
     // 消息队列锁定状态表
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, LockEntry>> mqLockTable =
@@ -129,7 +130,9 @@ public class RebalanceLockManager {
      */
     public Set<MessageQueue> tryLockBatch(final String group, final Set<MessageQueue> mqs,
         final String clientId) {
+        // 要锁定的队列中已经锁定的队列
         Set<MessageQueue> lockedMqs = new HashSet<MessageQueue>(mqs.size());
+        // 之前没有锁定，需要锁定的队列
         Set<MessageQueue> notLockedMqs = new HashSet<MessageQueue>(mqs.size());
 
         for (MessageQueue mq : mqs) {
@@ -140,6 +143,7 @@ public class RebalanceLockManager {
             }
         }
 
+        // 锁定需要锁定的队列
         if (!notLockedMqs.isEmpty()) {
             try {
                 this.lock.lockInterruptibly();
@@ -151,6 +155,7 @@ public class RebalanceLockManager {
                     }
 
                     for (MessageQueue mq : notLockedMqs) {
+                        // 为队列新建锁定标识，加入锁定状态表
                         LockEntry lockEntry = groupValue.get(mq);
                         if (null == lockEntry) {
                             lockEntry = new LockEntry();

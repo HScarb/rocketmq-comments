@@ -385,7 +385,7 @@ public abstract class RebalanceImpl {
      *
      * @param topic 主题
      * @param mqSet 重平衡后该消费者新分配到的的消息队列
-     * @param isOrder
+     * @param isOrder 是否顺序消费
      * @return
      */
     private boolean updateProcessQueueTableInRebalance(final String topic, final Set<MessageQueue> mqSet,
@@ -404,7 +404,7 @@ public abstract class RebalanceImpl {
                 if (!mqSet.contains(mq)) {
                     // 该 ProcessQueue 中不会有消息被消费
                     pq.setDropped(true);
-                    // 移除消费队列，移除前持久化
+                    // 移除消费队列 并释放 Broker锁（顺序消费），移除前持久化
                     if (this.removeUnnecessaryMessageQueue(mq, pq)) {
                         it.remove();
                         changed = true;

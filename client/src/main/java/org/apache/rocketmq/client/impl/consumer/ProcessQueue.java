@@ -54,7 +54,7 @@ public class ProcessQueue {
     private final AtomicLong msgCount = new AtomicLong();
     // 保存的消息大小
     private final AtomicLong msgSize = new AtomicLong();
-    // 消费锁，再顺序消费和移除处理队列时使用
+    // 消费锁，在顺序消费和移除处理队列时使用
     private final Lock consumeLock = new ReentrantLock();
     /**
      * A subset of msgTreeMap, will only be used when orderly consume
@@ -308,9 +308,9 @@ public class ProcessQueue {
     }
 
     /**
-     * 将顺序消费时消息暂存的 TreeMap 清空
+     * 用于更新消费进度，表示顺序消息消费暂存的 TreeMap 都已消费完成，清空该 TreeMap，返回最后一条消息的 offset + 1
      *
-     * @return
+     * @return 最后一条消息的逻辑偏移量（offset + 1）
      */
     public long commit() {
         try {
@@ -338,6 +338,7 @@ public class ProcessQueue {
     /**
      * 重新消费消息，顺序消费模式使用
      * 将消费失败的消息从顺序消息 TreeMap 中放回 TreeMap，等待下次重新消费
+     *
      * @param msgs
      */
     public void makeMessageToConsumeAgain(List<MessageExt> msgs) {

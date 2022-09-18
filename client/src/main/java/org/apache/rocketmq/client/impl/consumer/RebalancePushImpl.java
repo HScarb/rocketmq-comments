@@ -92,30 +92,35 @@ public class RebalancePushImpl extends RebalanceImpl {
 
     /**
      * 将重平衡后丢弃的消费队列移除
-     * 移除钱持久化消费的消费进度
+     * 移除前持久化消费的消费进度
      *
-     * @param mq
-     * @param pq
+     * @param mq 消息队列
+     * @param pq 处理队列
      * @return
      */
     @Override
     public boolean removeUnnecessaryMessageQueue(MessageQueue mq, ProcessQueue pq) {
+        // 持久化消费进度，然后移除
         this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
         this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
             && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
             try {
+                // 如果是顺序消费，尝试获取队列的消费锁，最多等待 1s
                 if (pq.getConsumeLock().tryLock(1000, TimeUnit.MILLISECONDS)) {
+                    // 获取成功，表示该队列没有消息正被消费，可以向 Broker 发请求解锁该队列
                     try {
                         return this.unlockDelay(mq, pq);
                     } finally {
                         pq.getConsumeLock().unlock();
                     }
                 } else {
+                    // 获取消费锁失败，表示该队列有消息正被消费，且消费时长大于 1s，那么本次无法将该队列解锁
+                    // 该队列新分配到负载的 Broker 由于拿不到该队列的锁，也无法开始消费，需要等待下一次重平衡时再尝试解锁
                     log.warn("[WRONG]mq is consuming, so can not unlock it, {}. maybe hanged for a while, {}",
                         mq,
                         pq.getTryUnlockTimes());
-
+                    // 增加解锁尝试次数
                     pq.incTryUnlockTimes();
                 }
             } catch (Exception e) {

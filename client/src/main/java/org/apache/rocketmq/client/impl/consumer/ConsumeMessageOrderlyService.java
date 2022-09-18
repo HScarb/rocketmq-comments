@@ -303,7 +303,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
      * @param status
      * @param context
      * @param consumeRequest
-     * @return
+     * @return 是否继续本次消费请求
      */
     public boolean processConsumeResult(
         final List<MessageExt> msgs,
@@ -321,21 +321,26 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                     log.warn("the message queue consume result is illegal, we think you want to ack these message {}",
                         consumeRequest.getMessageQueue());
                 case SUCCESS:
-                    // 消费成功，在处理队列中更新顺序消费偏移量
+                    // 消费成功，清空临时处理队列，获取消费成功的消息偏移量
                     commitOffset = consumeRequest.getProcessQueue().commit();
                     // 数据统计
                     this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
                     break;
                 case SUSPEND_CURRENT_QUEUE_A_MOMENT:
                     this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
+                    // 检查是否超过最大重试次数（默认为 Integer.MAX_VALUE），如果超过则发回 Broker 进入死信队列，如果没有超过则过一会后重试消费
                     if (checkReconsumeTimes(msgs)) {
+                        // 将消息重新放回处理队列
                         consumeRequest.getProcessQueue().makeMessageToConsumeAgain(msgs);
+                        // 1s 后重新消费
                         this.submitConsumeRequestLater(
                             consumeRequest.getProcessQueue(),
                             consumeRequest.getMessageQueue(),
                             context.getSuspendCurrentQueueTimeMillis());
+                        // 结束本次消费请求
                         continueConsume = false;
                     } else {
+                        // 没有消息需要重试，准备提交这批消息的消费进度
                         commitOffset = consumeRequest.getProcessQueue().commit();
                     }
                     break;
@@ -349,6 +354,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                     this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
                     break;
                 case COMMIT:
+                    // 消费成功，清空临时处理队列，获取消费成功的消息偏移量
                     commitOffset = consumeRequest.getProcessQueue().commit();
                     break;
                 case ROLLBACK:
@@ -374,11 +380,11 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                     break;
             }
         }
-
+        // 更新消费进度
         if (commitOffset >= 0 && !consumeRequest.getProcessQueue().isDropped()) {
             this.defaultMQPushConsumerImpl.getOffsetStore().updateOffset(consumeRequest.getMessageQueue(), commitOffset, false);
         }
-
+        // 是否继续本次消费请求
         return continueConsume;
     }
 
@@ -395,6 +401,12 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
         }
     }
 
+    /**
+     * 检查消息重试次数
+     * @param msgs
+     * 
+     * @return 是否有消息需要重试
+     */
     private boolean checkReconsumeTimes(List<MessageExt> msgs) {
         boolean suspend = false;
         if (msgs != null && !msgs.isEmpty()) {
