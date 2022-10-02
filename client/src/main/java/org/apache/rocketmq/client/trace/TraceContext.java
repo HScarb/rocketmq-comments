@@ -25,15 +25,24 @@ import java.util.List;
  */
 public class TraceContext implements Comparable<TraceContext> {
 
+    // 轨迹类型。Pub：消息发送，SubBefore：消费者消费前，SubAfter：消费者消费后
     private TraceType traceType;
+    // 时间戳
     private long timeStamp = System.currentTimeMillis();
+    // Broker 所在区域 ID，取自 BrokerConfig#regionId
     private String regionId = "";
     private String regionName = "";
+    // 生产者或消费者组名称
     private String groupName = "";
+    // 耗时
     private int costTime = 0;
+    // 发送/消费成功
     private boolean isSuccess = true;
+    // 在消费时使用，消费端的请求 ID
     private String requestId = MessageClientIDSetter.createUniqID();
+    // 消费状态码
     private int contextCode = 0;
+    // 消息的轨迹数据
     private List<TraceBean> traceBeans;
 
     public int getContextCode() {

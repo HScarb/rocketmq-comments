@@ -18,11 +18,19 @@ package org.apache.rocketmq.client.impl.consumer;
 
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * 拉取请求，为推模式消费者服务，在 {@link PullMessageService} 中保存和指定
+ */
 public class PullRequest {
+    // 消费者组
     private String consumerGroup;
+    // 待拉取的消费队列
     private MessageQueue messageQueue;
+    // 消息处理队列，从 Broker 中拉取到的消息会先存入 ProcessQueue，再提交到消费者消费线程池进行消费
     private ProcessQueue processQueue;
+    // 待拉取的 MessageQueue 偏移量
     private long nextOffset;
+    // 之前是否被锁定过（判断是否是第一次拉取）
     private boolean previouslyLocked = false;
 
     public boolean isPreviouslyLocked() {

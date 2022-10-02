@@ -90,6 +90,7 @@ public class TopicValidator {
     public static boolean isTopicOrGroupIllegal(String str) {
         int strLen = str.length();
         int len = VALID_CHAR_BIT_MAP.length;
+        // 将位图从堆复制到栈里（本地变量），提高下面循环的变量访问速度
         boolean[] bitMap = VALID_CHAR_BIT_MAP;
         for (int i = 0; i < strLen; i++) {
             char ch = str.charAt(i);

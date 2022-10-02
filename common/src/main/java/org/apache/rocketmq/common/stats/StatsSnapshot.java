@@ -18,10 +18,14 @@
 package org.apache.rocketmq.common.stats;
 
 public class StatsSnapshot {
+    // 总数
     private long sum;
+    // TPS
     private double tps;
 
+    // 变更次数
     private long times;
+    // 平均变更次数，一次调用改变的平均数值
     private double avgpt;
 
     public long getSum() {

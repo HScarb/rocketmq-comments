@@ -462,6 +462,11 @@ public class CommitLog {
         this.confirmOffset = phyOffset;
     }
 
+    /**
+     * CommitLog异常恢复，即Broker异常退出的情况下走该方法
+     *
+     * @param maxPhyOffsetOfConsumeQueue
+     */
     @Deprecated
     public void recoverAbnormally(long maxPhyOffsetOfConsumeQueue) {
         // recover by the minimum time stamp
@@ -471,6 +476,7 @@ public class CommitLog {
             // Looking beginning to recover from which file
             int index = mappedFiles.size() - 1;
             MappedFile mappedFile = null;
+            // 从后往前找到最新的一个正常的CommitLog文件开始恢复
             for (; index >= 0; index--) {
                 mappedFile = mappedFiles.get(index);
                 if (this.isMappedFileMatchedRecover(mappedFile)) {
@@ -548,9 +554,15 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 判断该MappedFile是否正常，如果正常则从它开始恢复
+     * @param mappedFile CommitLog文件
+     * @return 是否正常，true正常，false损坏
+     */
     private boolean isMappedFileMatchedRecover(final MappedFile mappedFile) {
         ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
 
+        // 判断文件魔数是否正确
         int magicCode = byteBuffer.getInt(MessageDecoder.MESSAGE_MAGIC_CODE_POSTION);
         if (magicCode != MESSAGE_MAGIC_CODE) {
             return false;
@@ -559,13 +571,19 @@ public class CommitLog {
         int sysFlag = byteBuffer.getInt(MessageDecoder.SYSFLAG_POSITION);
         int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
         int msgStoreTimePos = 4 + 4 + 4 + 4 + 4 + 8 + 8 + 4 + 8 + bornhostLength;
+        // 获取CommitLog文件中第一条消息的存储时间
+        // 如果文件中第一条消息的存储时间等于0，说明该消息的存储文件中未存储任何消息，返回false
         long storeTimestamp = byteBuffer.getLong(msgStoreTimePos);
         if (0 == storeTimestamp) {
             return false;
         }
 
+        // 将checkpoint中存储的消息或索引的刷盘时间与文件中第一条消息的保存时间进行对比
+        // 如果CommitLog文件中第一条消息的保存时间小于等于checkpoint记录的刷盘时间（这里是索引文件刷盘时间），那么应该从该文件开始恢复
+        // 否则，说明该文件就算有保存了消息，checkpoint也没有记录，应该继续检查上一个文件判断是否从上一个文件开始恢复
         if (this.defaultMessageStore.getMessageStoreConfig().isMessageIndexEnable()
             && this.defaultMessageStore.getMessageStoreConfig().isMessageIndexSafe()) {
+            // 如果开启了索引文件，并且配置了索引文件的刷盘时间也参与恢复的比较，那么对比第一条消息的保存时间与索引记录时间
             if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestampIndex()) {
                 log.info("find check timestamp, {} {}",
                     storeTimestamp,
@@ -573,6 +591,7 @@ public class CommitLog {
                 return true;
             }
         } else {
+            // 将第一条消息的保存时间与CommitLog或ConsumeQueue记录时间的更小值对比
             if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestamp()) {
                 log.info("find check timestamp, {} {}",
                     storeTimestamp,
@@ -630,15 +649,17 @@ public class CommitLog {
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
                 || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
+            // 判断是否是定时消息
             if (msg.getDelayTimeLevel() > 0) {
                 if (msg.getDelayTimeLevel() > this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel()) {
                     msg.setDelayTimeLevel(this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel());
                 }
-
+                // 替换消息的Topic和QueueId为定时消息Topic和延迟等级对应的QueueId
                 topic = TopicValidator.RMQ_SYS_SCHEDULE_TOPIC;
                 int queueId = ScheduleMessageService.delayLevel2QueueId(msg.getDelayTimeLevel());
 
                 // Backup real topic, queueId
+                // 把真正的 Topic 和 QueueId 放到消息属性中
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_TOPIC, msg.getTopic());
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msg.getQueueId()));
                 msg.setPropertiesString(MessageDecoder.messageProperties2String(msg.getProperties()));

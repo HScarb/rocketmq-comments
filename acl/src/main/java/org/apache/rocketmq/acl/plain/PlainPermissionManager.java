@@ -51,6 +51,10 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.srvutil.AclFileWatchService;
 
+/**
+ * 权限配置文件管理器
+ * 解析acl配置文件，加载访问控制规则，验证访问权限
+ */
 public class PlainPermissionManager {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
@@ -62,18 +66,25 @@ public class PlainPermissionManager {
 
     private String defaultAclFile;
 
+    // 权限映射配置表，用来缓存所有ACL配置文件的权限数据
     private Map<String/** fileFullPath **/, Map<String/** AccessKey **/, PlainAccessResource>> aclPlainAccessResourceMap = new HashMap<>();
 
+    // 用来缓存 AccessKey 和 ACL 配置文件的映射关系
     private Map<String/** AccessKey **/, String/** fileFullPath **/> accessKeyTable = new HashMap<>();
 
+    // 用来缓存所有 ACL 配置文件的全局白名单
     private List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
 
+    // 远程 IP 解析策略工厂，用于解析白名单 IP 地址
     private RemoteAddressStrategyFactory remoteAddressStrategyFactory = new RemoteAddressStrategyFactory();
 
+    // 缓存 ACL 配置文件和全局白名单的映射关系
     private Map<String/** fileFullPath **/, List<RemoteAddressStrategy>> globalWhiteRemoteAddressStrategyMap = new HashMap<>();
 
+    // 是否监听 acl 配置文件。如果开启监听，一旦文件内容改变，可以在不重启服务的情况下自动生效
     private boolean isWatchStart;
 
+    // 配置文件版本号表
     private Map<String/** fileFullPath **/, DataVersion> dataVersionMap = new HashMap<>();
 
     @Deprecated
@@ -84,7 +95,9 @@ public class PlainPermissionManager {
     public PlainPermissionManager() {
         this.defaultAclDir = MixAll.dealFilePath(fileHome + File.separator + "conf" + File.separator + "acl");
         this.defaultAclFile = MixAll.dealFilePath(fileHome + File.separator + System.getProperty("rocketmq.acl.plain.file", "conf/plain_acl.yml"));
+        // 解析 yaml 文件，将配置加载到内存
         load();
+        // 监听配置文件变化，如发生变化，重新加载配置
         watch();
     }
 
@@ -110,11 +123,15 @@ public class PlainPermissionManager {
         return allAclFileFullPath;
     }
 
+    /**
+     * 解析所有 ACL 配置文件，将 ACL 配置规则加载到内存
+     */
     public void load() {
         if (fileHome == null || fileHome.isEmpty()) {
             return;
         }
 
+        // 定义临时变量，用于暂存解析出来的 ACL 配置。这里没有直接覆盖全局配置，是为了防止全局配置在未解析完全的情况下被读取
         Map<String, Map<String, PlainAccessResource>> aclPlainAccessResourceMap = new HashMap<>();
         Map<String, String> accessKeyTable = new HashMap<>();
         List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
@@ -123,11 +140,13 @@ public class PlainPermissionManager {
 
         assureAclConfigFilesExist();
 
+        // 获取所有 ACL 配置文件
         fileList = getAllAclFiles(defaultAclDir);
         if (new File(defaultAclFile).exists() && !fileList.contains(defaultAclFile)) {
             fileList.add(defaultAclFile);
         }
 
+        // 遍历 ACL 配置文件，解析配置
         for (int i = 0; i < fileList.size(); i++) {
             final String currentFile = MixAll.dealFilePath(fileList.get(i));
             JSONObject plainAclConfData = AclUtils.getYamlDataObject(currentFile,
@@ -138,6 +157,7 @@ public class PlainPermissionManager {
             }
             log.info("Broker plain acl conf data is : {}", plainAclConfData.toString());
 
+            // 解析全局 IP 白名单配置
             List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategyList = new ArrayList<>();
             JSONArray globalWhiteRemoteAddressesList = plainAclConfData.getJSONArray("globalWhiteRemoteAddresses");
             if (globalWhiteRemoteAddressesList != null && !globalWhiteRemoteAddressesList.isEmpty()) {
@@ -151,6 +171,7 @@ public class PlainPermissionManager {
                 globalWhiteRemoteAddressStrategy.addAll(globalWhiteRemoteAddressStrategyList);
             }
 
+            // 解析账号权限配置
             JSONArray accounts = plainAclConfData.getJSONArray(AclConstants.CONFIG_ACCOUNTS);
             Map<String, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
             if (accounts != null && !accounts.isEmpty()) {
@@ -170,6 +191,7 @@ public class PlainPermissionManager {
                 aclPlainAccessResourceMap.put(currentFile, plainAccessResourceMap);
             }
 
+            // 解析数据版本
             JSONArray tempDataVersion = plainAclConfData.getJSONArray(AclConstants.CONFIG_DATA_VERSION);
             DataVersion dataVersion = new DataVersion();
             if (tempDataVersion != null && !tempDataVersion.isEmpty()) {
@@ -183,6 +205,7 @@ public class PlainPermissionManager {
         if (dataVersionMap.containsKey(defaultAclFile)) {
             this.dataVersion.assignNewOne(dataVersionMap.get(defaultAclFile));
         }
+        // 刷新全局配置
         this.dataVersionMap = dataVersionMap;
         this.globalWhiteRemoteAddressStrategyMap = globalWhiteRemoteAddressStrategyMap;
         this.globalWhiteRemoteAddressStrategy = globalWhiteRemoteAddressStrategy;
@@ -207,11 +230,17 @@ public class PlainPermissionManager {
         }
     }
 
+    /**
+     * 解析和加载单个 acl 文件
+     *
+     * @param aclFilePath acl 文件路径
+     */
     public void load(String aclFilePath) {
         aclFilePath = MixAll.dealFilePath(aclFilePath);
         Map<String, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
         List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
 
+        // 解析配置文件成JSONObject
         JSONObject plainAclConfData = AclUtils.getYamlDataObject(aclFilePath,
             JSONObject.class);
         if (plainAclConfData == null || plainAclConfData.isEmpty()) {
@@ -219,6 +248,7 @@ public class PlainPermissionManager {
             return;
         }
         log.info("Broker plain acl conf data is : {}", plainAclConfData.toString());
+        // 根据全局白名单列表构建对应的规则校验器
         JSONArray globalWhiteRemoteAddressesList = plainAclConfData.getJSONArray("globalWhiteRemoteAddresses");
         if (globalWhiteRemoteAddressesList != null && !globalWhiteRemoteAddressesList.isEmpty()) {
             for (int i = 0; i < globalWhiteRemoteAddressesList.size(); i++) {
@@ -236,7 +266,7 @@ public class PlainPermissionManager {
             this.globalWhiteRemoteAddressStrategyMap.put(aclFilePath, globalWhiteRemoteAddressStrategy);
         }
 
-
+        // 解析accounts，按用户名将其配置规则存入plainAccessResourceMap
         JSONArray accounts = plainAclConfData.getJSONArray(AclConstants.CONFIG_ACCOUNTS);
         if (accounts != null && !accounts.isEmpty()) {
             List<PlainAccessConfig> plainAccessConfigList = accounts.toJavaList(PlainAccessConfig.class);
@@ -344,7 +374,7 @@ public class PlainPermissionManager {
                 accountMap.put(plainAccessConfig.getAccessKey(), buildPlainAccessResource(plainAccessConfig));
             } else {
                 for (Map.Entry<String, PlainAccessResource> entry : accountMap.entrySet()) {
-                    if (entry.getValue().equals(plainAccessConfig.getAccessKey())) {
+                    if (entry.getValue().getAccessKey().equals(plainAccessConfig.getAccessKey())) {
                         PlainAccessResource plainAccessResource = buildPlainAccessResource(plainAccessConfig);
                         accountMap.put(entry.getKey(), plainAccessResource);
                         break;
@@ -553,6 +583,9 @@ public class PlainPermissionManager {
         return aclConfig;
     }
 
+    /**
+     * 监听ACL配置文件变化，重新load
+     */
     private void watch() {
         try {
             AclFileWatchService aclFileWatchService = new AclFileWatchService(defaultAclDir, defaultAclFile, new AclFileWatchService.Listener() {
@@ -575,6 +608,12 @@ public class PlainPermissionManager {
 
     }
 
+    /**
+     * 验证是否有某资源的访问权限
+     *
+     * @param needCheckedAccess 客户端请求需要的资源权限
+     * @param ownedAccess 该账号拥有的资源权限
+     */
     void checkPerm(PlainAccessResource needCheckedAccess, PlainAccessResource ownedAccess) {
         if (Permission.needAdminPerm(needCheckedAccess.getRequestCode()) && !ownedAccess.isAdmin()) {
             throw new AclException(String.format("Need admin permission for request code=%d, but accessKey=%s is not", needCheckedAccess.getRequestCode(), ownedAccess.getAccessKey()));
@@ -582,16 +621,19 @@ public class PlainPermissionManager {
         Map<String, Byte> needCheckedPermMap = needCheckedAccess.getResourcePermMap();
         Map<String, Byte> ownedPermMap = ownedAccess.getResourcePermMap();
 
+        // 本次操作无需权限验证，直接通过
         if (needCheckedPermMap == null) {
             // If the needCheckedPermMap is null,then return
             return;
         }
 
+        // 该账号未设置任何访问规则，且用户是管理员，直接通过
         if (ownedPermMap == null && ownedAccess.isAdmin()) {
             // If the ownedPermMap is null and it is an admin user, then return
             return;
         }
 
+        // 遍历需要的权限与拥有的权限进行对比
         for (Map.Entry<String, Byte> needCheckedEntry : needCheckedPermMap.entrySet()) {
             String resource = needCheckedEntry.getKey();
             Byte neededPerm = needCheckedEntry.getValue();

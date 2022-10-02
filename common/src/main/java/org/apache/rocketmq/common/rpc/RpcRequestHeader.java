@@ -15,25 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.client.latency;
+package org.apache.rocketmq.common.rpc;
 
-public interface LatencyFaultTolerance<T> {
-    /**
-     * 更新失败条目
-     *
-     * @param name Broker 名称
-     * @param currentLatency 消息发送延迟时间
-     * @param notAvailableDuration 规避 Broker 的时长
-     */
-    void updateFaultItem(final T name, final long currentLatency, final long notAvailableDuration);
+import org.apache.rocketmq.remoting.CommandCustomHeader;
 
-    boolean isAvailable(final T name);
+public abstract class RpcRequestHeader implements CommandCustomHeader {
+    protected String bname;
 
-    void remove(final T name);
+    public String getBname() {
+        return bname;
+    }
 
-    /**
-     * 尝试从规避的 Broker 中选择一个可用的 Broker，如果没有找到，返回 null
-     * @return
-     */
-    T pickOneAtLeast();
+    public void setBname(String bname) {
+        this.bname = bname;
+    }
 }

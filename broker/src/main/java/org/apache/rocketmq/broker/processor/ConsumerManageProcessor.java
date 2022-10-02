@@ -101,6 +101,15 @@ public class ConsumerManageProcessor extends AsyncNettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 处理从消费者发送过来的消费进度持久化请求
+     * 将消费者上报的消费进度持久化
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand updateConsumerOffset(ChannelHandlerContext ctx, RemotingCommand request)
         throws RemotingCommandException {
         final RemotingCommand response =

@@ -471,6 +471,12 @@ public class MessageDecoder {
         return map;
     }
 
+    /**
+     * 编码批量消息
+     *
+     * @param message
+     * @return
+     */
     public static byte[] encodeMessage(Message message) {
         //only need flag, body, properties
         byte[] body = message.getBody();

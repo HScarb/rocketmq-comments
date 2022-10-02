@@ -38,23 +38,27 @@ import org.apache.rocketmq.remoting.netty.NettyServerConfig;
 import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.srvutil.FileWatchService;
 
-
+/**
+ * Name server 服务控制器
+ */
 public class NamesrvController {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
-
+    // Name server 配置
     private final NamesrvConfig namesrvConfig;
-
+    // 通信层配置
     private final NettyServerConfig nettyServerConfig;
 
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
         "NSScheduledThread"));
+    // 核心数据结构
     private final KVConfigManager kvConfigManager;
     private final RouteInfoManager routeInfoManager;
 
+    // 服务端通信对象
     private RemotingServer remotingServer;
-
+    // 用于接收 Broker 连接事件
     private BrokerHousekeepingService brokerHousekeepingService;
-
+    // 服务端网络请求处理线程池
     private ExecutorService remotingExecutor;
 
     private Configuration configuration;
@@ -74,18 +78,22 @@ public class NamesrvController {
     }
 
     public boolean initialize() {
-
+        // 加载 KV 配置
         this.kvConfigManager.load();
 
+        // 初始化通信层
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
 
+        // 初始化线程池
         this.remotingExecutor =
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
 
         this.registerProcessor();
 
+        // 增加定时任务，每 10s 扫描一次 Broker，移除未激活状态的 Broker
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.routeInfoManager::scanNotActiveBroker, 5, 10, TimeUnit.SECONDS);
 
+        // 增加定时任务，每 10min 打印一次 KV 配置
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.kvConfigManager::printAllPeriodically, 1, 10, TimeUnit.MINUTES);
 
         if (TlsSystemConfig.tlsMode != TlsMode.DISABLED) {

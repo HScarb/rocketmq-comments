@@ -25,19 +25,29 @@ import java.util.concurrent.atomic.LongAdder;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.logging.InternalLogger;
 
+/**
+ * 监控数据指标项
+ */
 public class StatsItem {
 
+    // 计数值
     private final LongAdder value = new LongAdder();
 
+    // value 值变化的次数
     private final LongAdder times = new LongAdder();
 
+    // 近 1min 内调用的快照信息，每 10s 采集一次，超过 6 个则淘汰最早入队的快照信息，长度不会超过 6
     private final LinkedList<CallSnapshot> csListMinute = new LinkedList<CallSnapshot>();
 
+    // 近 1h 内调用的快照信息，每 10 min 采集一次，不会超过 6 个
     private final LinkedList<CallSnapshot> csListHour = new LinkedList<CallSnapshot>();
 
+    // 近 1day 内调用的快照信息，每 1h 采集一次，不会超过 24 个
     private final LinkedList<CallSnapshot> csListDay = new LinkedList<CallSnapshot>();
 
+    // 统计项名称，与 StatsItemSet 中的 statsName 相同
     private final String statsName;
+    // 统计项 key，如具体 Topic 名称
     private final String statsKey;
     private final ScheduledExecutorService scheduledExecutorService;
     private final InternalLogger log;
@@ -50,6 +60,12 @@ public class StatsItem {
         this.log = log;
     }
 
+    /**
+     * 指标计算
+     *
+     * @param csList 采样容器
+     * @return 指标快照
+     */
     private static StatsSnapshot computeStatsData(final LinkedList<CallSnapshot> csList) {
         StatsSnapshot statsSnapshot = new StatsSnapshot();
         synchronized (csList) {
@@ -153,6 +169,9 @@ public class StatsItem {
         }, Math.abs(UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis()) - 2000, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 对 10s 内指标进行采样，生成一个快照，加入列表（滑动窗口）
+     */
     public void samplingInSeconds() {
         synchronized (this.csListMinute) {
             if (this.csListMinute.size() == 0) {
@@ -192,6 +211,9 @@ public class StatsItem {
         }
     }
 
+    /**
+     * 计算监控指标，输出
+     */
     public void printAtMinutes() {
         StatsSnapshot ss = computeStatsData(this.csListMinute);
         log.info(String.format("[%s] [%s] Stats In One Minute, ", this.statsName, this.statsKey) + statPrintDetail(ss));
@@ -232,10 +254,15 @@ public class StatsItem {
     }
 }
 
+/**
+ * 统计快照
+ */
 class CallSnapshot {
+    // 快照时间戳
     private final long timestamp;
+    // 快照生成时 value 值变化的次数
     private final long times;
-
+    // 快照生成时当前的统计值
     private final long value;
 
     public CallSnapshot(long timestamp, long times, long value) {

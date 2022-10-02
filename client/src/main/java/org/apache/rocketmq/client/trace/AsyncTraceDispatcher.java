@@ -50,26 +50,39 @@ import org.apache.rocketmq.remoting.RPCHook;
 
 import static org.apache.rocketmq.client.trace.TraceConstants.TRACE_INSTANCE_NAME;
 
+/**
+ * 消息轨迹异步转发器，异步实现消息轨迹数据的发送
+ */
 public class AsyncTraceDispatcher implements TraceDispatcher {
 
     private final static InternalLogger log = ClientLogger.getLog();
     private final static AtomicInteger COUNTER = new AtomicInteger();
+    // 异步转发队列长度，默认 2048
     private final int queueSize;
+    // 一次发送的请求包含数据条数，默认 100
     private final int batchSize;
+    // 一次发送最大消息大小，默认 128k
     private final int maxMsgSize;
     private final long pollingTimeMil;
     private final long waitTimeThresholdMil;
+    // 发送消息轨迹的消息生产者
     private final DefaultMQProducer traceProducer;
+    // 异步发送线程池
     private final ThreadPoolExecutor traceExecutor;
+    // 丢弃的消息个数
     // The last discard number of log
     private AtomicLong discardCount;
+    // 工作线程，从追加队列中获取一批待发送的消息轨迹数据，提交到线程池中执行
     private Thread worker;
+    // 消息轨迹待发送数据队列，存储每个消息轨迹的上下文
     private final ArrayBlockingQueue<TraceContext> traceContextQueue;
     private final HashMap<String, TraceDataSegment> taskQueueByTopic;
+    // 线程池内部队列，存储线程池发送任务
     private ArrayBlockingQueue<Runnable> appenderQueue;
     private volatile Thread shutDownHook;
     private volatile boolean stopped = false;
     private DefaultMQProducerImpl hostProducer;
+    // 消费者信息，记录消费时的轨迹
     private DefaultMQPushConsumerImpl hostConsumer;
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
     private String dispatcherId = UUID.randomUUID().toString();
@@ -145,12 +158,14 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
     }
 
     public void start(String nameSrvAddr, AccessChannel accessChannel) throws MQClientException {
+        // 使用 CAS 机制避免 start 方法重复执行
         if (isStarted.compareAndSet(false, true)) {
             traceProducer.setNamesrvAddr(nameSrvAddr);
             traceProducer.setInstanceName(TRACE_INSTANCE_NAME + "_" + nameSrvAddr);
             traceProducer.start();
         }
         this.accessChannel = accessChannel;
+        // 启动后台工作线程，
         this.worker = new Thread(new AsyncRunnable(), "MQ-AsyncTraceDispatcher-Thread-" + dispatcherId);
         this.worker.setDaemon(true);
         this.worker.start();
@@ -246,12 +261,17 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
         }
     }
 
+    /**
+     * 批量从待处理消息轨迹队列中取数据，封装成一个 AsyncAppenderRequest 异步发送请求，提交给发送线程池执行
+     * 批量发送机制是为了提高效率
+     */
     class AsyncRunnable implements Runnable {
         private boolean stopped;
 
         @Override
         public void run() {
             while (!stopped) {
+                // 批量从等待处理的消息轨迹队列中获取数据，将一批数据封装成一个发送请求，提交给异步发送线程池执行
                 synchronized (traceContextQueue) {
                     long endTime = System.currentTimeMillis() + pollingTimeMil;
                     while (System.currentTimeMillis() < endTime) {
@@ -287,6 +307,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
                     sendDataByTimeThreshold();
 
                     if (AsyncTraceDispatcher.this.stopped) {
+                        // 同步 AsyncTraceDispatcher 的停止状态
                         this.stopped = true;
                     }
                 }
@@ -363,7 +384,9 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
         }
     }
 
-
+    /**
+     * 异步发送请求
+     */
     class AsyncDataSendTask implements Runnable {
         private final String traceTopicName;
         private final String regionId;
@@ -375,6 +398,9 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
             this.traceTransferBeanList = traceTransferBeanList;
         }
 
+        /**
+         * 发送消息轨迹数据
+         */
         @Override
         public void run() {
             StringBuilder buffer = new StringBuilder(1024);
@@ -398,7 +424,9 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
             // Keyset of message trace includes msgId of or original message
             message.setKeys(keySet);
             try {
+                // 获取 traceTopic 的 Broker 列表，使用默认 Topic 的情况下只会有一个 Broker
                 Set<String> traceBrokerSet = tryGetMessageQueueBrokerSet(traceProducer.getDefaultMQProducerImpl(), traceTopic);
+                // 消息发送回调方法
                 SendCallback callback = new SendCallback() {
                     @Override
                     public void onSuccess(SendResult sendResult) {
@@ -415,6 +443,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
                     traceProducer.send(message, callback, 5000);
                 } else {
                     traceProducer.send(message, new MessageQueueSelector() {
+                        // 队列选择方法，轮询
                         @Override
                         public MessageQueue select(List<MessageQueue> mqs, Message msg, Object arg) {
                             Set<String> brokerSet = (Set<String>) arg;
@@ -439,6 +468,13 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
             }
         }
 
+        /**
+         * 获取某 Topic 的 Broker 列表
+         *
+         * @param producer
+         * @param topic
+         * @return
+         */
         private Set<String> tryGetMessageQueueBrokerSet(DefaultMQProducerImpl producer, String topic) {
             Set<String> brokerSet = new HashSet<String>();
             TopicPublishInfo topicPublishInfo = producer.getTopicPublishInfoTable().get(topic);

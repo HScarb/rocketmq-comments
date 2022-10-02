@@ -251,18 +251,27 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor {
         return false;
     }
 
+    /**
+     * Topic 更新请求处理逻辑
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private synchronized RemotingCommand updateAndCreateTopic(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         if (validateSlave(response)) {
             return response;
         }
+        // 解码请求头
         final CreateTopicRequestHeader requestHeader =
             (CreateTopicRequestHeader) request.decodeCommandCustomHeader(CreateTopicRequestHeader.class);
         log.info("updateAndCreateTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
         String topic = requestHeader.getTopic();
 
+        // 校验 Topic 名称
         if (!TopicValidator.validateTopic(topic, response)) {
             return response;
         }
@@ -270,6 +279,7 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor {
             return response;
         }
 
+        // 构建 Topic 配置对象
         TopicConfig topicConfig = new TopicConfig(topic);
         topicConfig.setReadQueueNums(requestHeader.getReadQueueNums());
         topicConfig.setWriteQueueNums(requestHeader.getWriteQueueNums());
@@ -277,8 +287,10 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor {
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
 
+        // 将 Topic 配置更新，并将元数据版本号 + 1，然后持久化元数据
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
+        // 增量更新元数据信息到 Nameserver
         this.brokerController.registerIncrementBrokerData(topicConfig, this.brokerController.getTopicConfigManager().getDataVersion());
 
         response.setCode(ResponseCode.SUCCESS);
@@ -654,6 +666,14 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 处理批量锁定消息队列请求
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand lockBatchMQ(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -1311,6 +1331,14 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 请求统计数据
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand ViewBrokerStatsData(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final ViewBrokerStatsDataRequestHeader requestHeader =

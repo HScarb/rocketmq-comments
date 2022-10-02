@@ -26,6 +26,9 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 远程 IP 解析策略工厂类，负责根据远程 IP 白名单配置生成对应的解析白名单 IP 的策略类
+ */
 public class RemoteAddressStrategyFactory {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
@@ -74,6 +77,10 @@ public class RemoteAddressStrategyFactory {
 
     }
 
+    /**
+     * 全部匹配，直接返回 true，会阻断其他规则的判断。
+     * "*" "*.*.*.*" "*:*:*:*:*:*:*:*"
+     */
     public static class NullRemoteAddressStrategy implements RemoteAddressStrategy {
         @Override
         public boolean match(PlainAccessResource plainAccessResource) {
@@ -82,6 +89,9 @@ public class RemoteAddressStrategyFactory {
 
     }
 
+    /**
+     * 空，不设置白名单，默认返回 false
+     */
     public static class BlankRemoteAddressStrategy implements RemoteAddressStrategy {
         @Override
         public boolean match(PlainAccessResource plainAccessResource) {
@@ -90,6 +100,10 @@ public class RemoteAddressStrategyFactory {
 
     }
 
+    /**
+     * 多地址匹配模式，IP 地址的最后一组使用 {}，打括号中可以包含多个 IP 地址。
+     * 192.168.0.{100,101}
+     */
     public static class MultipleRemoteAddressStrategy implements RemoteAddressStrategy {
 
         private final Set<String> multipleSet = new HashSet<>();
@@ -119,6 +133,10 @@ public class RemoteAddressStrategyFactory {
 
     }
 
+    /**
+     * 单个地址匹配模式
+     * 192.168.1.1
+     */
     public static class OneRemoteAddressStrategy implements RemoteAddressStrategy {
 
         private String netaddress;
@@ -139,6 +157,10 @@ public class RemoteAddressStrategyFactory {
 
     }
 
+    /**
+     * 范围地址匹配模式
+     * 192.168.*.* 192.168.100-200.10-20
+     */
     public static class RangeRemoteAddressStrategy implements RemoteAddressStrategy {
 
         private String head;

@@ -26,10 +26,15 @@ import java.util.concurrent.TimeUnit;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.logging.InternalLogger;
 
+/**
+ * 监控统计数据指标集合
+ */
 public class StatsItemSet {
+    // 指标集合表
     private final ConcurrentMap<String/* key */, StatsItem> statsItemTable =
         new ConcurrentHashMap<String, StatsItem>(128);
 
+    // 统计项名称
     private final String statsName;
     private final ScheduledExecutorService scheduledExecutorService;
     private final InternalLogger log;
@@ -41,6 +46,9 @@ public class StatsItemSet {
         this.init();
     }
 
+    /**
+     * 启动定时任务，对数据进行采样
+     */
     public void init() {
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
@@ -104,6 +112,9 @@ public class StatsItemSet {
         }, Math.abs(UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis()), 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 遍历指标集中所有指标的 key，进行采样
+     */
     private void samplingInSeconds() {
         Iterator<Entry<String, StatsItem>> it = this.statsItemTable.entrySet().iterator();
         while (it.hasNext()) {

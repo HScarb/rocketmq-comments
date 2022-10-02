@@ -52,6 +52,9 @@ import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 延迟消息服务
+ */
 public class ScheduleMessageService extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -68,11 +71,15 @@ public class ScheduleMessageService extends ConfigManager {
         new ConcurrentHashMap<Integer, Long>(32);
     private final DefaultMessageStore defaultMessageStore;
     private final AtomicBoolean started = new AtomicBoolean(false);
+    // 异步投递线程池
     private ScheduledExecutorService deliverExecutorService;
     private MessageStore writeMessageStore;
     private int maxDelayLevel;
+    // 异步投递
     private boolean enableAsyncDeliver = false;
+    // 异步投递任务状态更新线程
     private ScheduledExecutorService handleExecutorService;
+    // 异步投递任务等待队列
     private final Map<Integer /* level */, LinkedBlockingQueue<PutResultProcess>> deliverPendingTable =
         new ConcurrentHashMap<>(32);
 
@@ -112,6 +119,12 @@ public class ScheduleMessageService extends ConfigManager {
         }
     }
 
+    /**
+     * 更新下一次要投递的逻辑偏移量
+     *
+     * @param delayLevel 延迟等级
+     * @param offset 该延迟等级下次要投递的逻辑偏移量
+     */
     private void updateOffset(int delayLevel, long offset) {
         this.offsetTable.put(delayLevel, offset);
     }
@@ -129,9 +142,11 @@ public class ScheduleMessageService extends ConfigManager {
         if (started.compareAndSet(false, true)) {
             this.load();
             this.deliverExecutorService = new ScheduledThreadPoolExecutor(this.maxDelayLevel, new ThreadFactoryImpl("ScheduleMessageTimerThread_"));
+            // 异步投递线程池
             if (this.enableAsyncDeliver) {
                 this.handleExecutorService = new ScheduledThreadPoolExecutor(this.maxDelayLevel, new ThreadFactoryImpl("ScheduleMessageExecutorHandleThread_"));
             }
+            // 为每个延迟等级创建一个DeliverDelayedMessageTimerTask，用于周期性扫描延迟等级的消息，将到期的消息重新投递
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
                 Integer level = entry.getKey();
                 Long timeDelay = entry.getValue();
@@ -141,13 +156,16 @@ public class ScheduleMessageService extends ConfigManager {
                 }
 
                 if (timeDelay != null) {
+                    // 异步投递，
                     if (this.enableAsyncDeliver) {
                         this.handleExecutorService.schedule(new HandlePutResultTask(level), FIRST_DELAY_TIME, TimeUnit.MILLISECONDS);
                     }
+                    // 同步投递，创建任务周期性扫描延迟等级的消息，将到期的消息重新投递
                     this.deliverExecutorService.schedule(new DeliverDelayedMessageTimerTask(level, offset), FIRST_DELAY_TIME, TimeUnit.MILLISECONDS);
                 }
             }
 
+            // 创建一个周期性定时任务，定时将offsetTable持久化
             this.deliverExecutorService.scheduleAtFixedRate(new Runnable() {
 
                 @Override
@@ -273,6 +291,9 @@ public class ScheduleMessageService extends ConfigManager {
         return delayOffsetSerializeWrapper.toJson(prettyFormat);
     }
 
+    /**
+     * 从配置文件中解析延迟等级信息，并保存到延迟等级映射表中
+     */
     public boolean parseDelayLevel() {
         HashMap<String, Long> timeUnitTable = new HashMap<String, Long>();
         timeUnitTable.put("s", 1000L);
@@ -308,6 +329,9 @@ public class ScheduleMessageService extends ConfigManager {
         return true;
     }
 
+    /**
+     * 消息到期，把原Topic和QueueId恢复
+     */
     private MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setBody(msgExt.getBody());
@@ -338,6 +362,9 @@ public class ScheduleMessageService extends ConfigManager {
         return msgInner;
     }
 
+    /**
+     * 定时消息扫描和投递任务，持续扫描一个delayLevel队列中的消息，如果到期则投递消息
+     */
     class DeliverDelayedMessageTimerTask implements Runnable {
         private final int delayLevel;
         private final long offset;
@@ -361,6 +388,8 @@ public class ScheduleMessageService extends ConfigManager {
         }
 
         /**
+         * 纠正下次投递时间，如果时间特别大，则纠正为当前时间
+         *
          * @return
          */
         private long correctDeliverTimestamp(final long now, final long deliverTimestamp) {
@@ -376,6 +405,7 @@ public class ScheduleMessageService extends ConfigManager {
         }
 
         public void executeOnTimeup() {
+            // 根据delayLevel查找对应的延迟消息ConsumeQueue
             ConsumeQueue cq =
                 ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(TopicValidator.RMQ_SYS_SCHEDULE_TOPIC,
                     delayLevel2QueueId(delayLevel));
@@ -385,6 +415,7 @@ public class ScheduleMessageService extends ConfigManager {
                 return;
             }
 
+            // 根据ConsumeQueue的有效延迟消息逻辑offset，获取所有有效的消息
             SelectMappedBufferResult bufferCQ = cq.getIndexBuffer(this.offset);
             if (bufferCQ == null) {
                 long resetOffset;
@@ -405,8 +436,10 @@ public class ScheduleMessageService extends ConfigManager {
             long nextOffset = this.offset;
             try {
                 int i = 0;
+                // 遍历ConsumeQueue中的所有有效消息
                 ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                 for (; i < bufferCQ.getSize() && isStarted(); i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
+                    // 获取ConsumeQueue索引的三个关键属性
                     long offsetPy = bufferCQ.getByteBuffer().getLong();
                     int sizePy = bufferCQ.getByteBuffer().getInt();
                     long tagsCode = bufferCQ.getByteBuffer().getLong();
@@ -422,17 +455,18 @@ public class ScheduleMessageService extends ConfigManager {
                             tagsCode = computeDeliverTimestamp(delayLevel, msgStoreTime);
                         }
                     }
-
+                    // ConsumeQueue里面的tagsCode实际是一个时间点（投递时间点）
                     long now = System.currentTimeMillis();
                     long deliverTimestamp = this.correctDeliverTimestamp(now, tagsCode);
                     nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
 
                     long countdown = deliverTimestamp - now;
                     if (countdown > 0) {
+                    // 如果现在还没到投递时间点，继续创建一个定时任务，0.1 秒之后执行
                         this.scheduleNextTimerTask(nextOffset, DELAY_FOR_A_WHILE);
                         return;
                     }
-
+                    // 如果现在已经到了投递时间点，投递消息
                     MessageExt msgExt = ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(offsetPy, sizePy);
                     if (msgExt == null) {
                         continue;
@@ -447,69 +481,90 @@ public class ScheduleMessageService extends ConfigManager {
 
                     boolean deliverSuc;
                     if (ScheduleMessageService.this.enableAsyncDeliver) {
+                        // 异步投递
                         deliverSuc = this.asyncDeliver(msgInner, msgExt.getMsgId(), nextOffset, offsetPy, sizePy);
                     } else {
+                        // 同步投递
                         deliverSuc = this.syncDeliver(msgInner, msgExt.getMsgId(), nextOffset, offsetPy, sizePy);
                     }
 
+                    // 投递失败（流控、阻塞、投递异常等原因），等待0.1s再次执行投递任务
                     if (!deliverSuc) {
                         this.scheduleNextTimerTask(nextOffset, DELAY_FOR_A_WHILE);
                         return;
                     }
                 }
 
+                // 下一次开始投递消息的逻辑偏移量
                 nextOffset = this.offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
             } catch (Exception e) {
                 log.error("ScheduleMessageService, messageTimeup execute error, offset = {}", nextOffset, e);
             } finally {
                 bufferCQ.release();
             }
-
+            // 等待 0.1s 后开始下一次判断和投递
             this.scheduleNextTimerTask(nextOffset, DELAY_FOR_A_WHILE);
         }
 
+        /**
+         * 开启一个新的定时任务，判断和投递消息
+         */
         public void scheduleNextTimerTask(long offset, long delay) {
             ScheduleMessageService.this.deliverExecutorService.schedule(new DeliverDelayedMessageTimerTask(
                 this.delayLevel, offset), delay, TimeUnit.MILLISECONDS);
         }
 
+        /**
+         * 同步投递
+         */
         private boolean syncDeliver(MessageExtBrokerInner msgInner, String msgId, long offset, long offsetPy,
             int sizePy) {
             PutResultProcess resultProcess = deliverMessage(msgInner, msgId, offset, offsetPy, sizePy, false);
             PutMessageResult result = resultProcess.get();
             boolean sendStatus = result != null && result.getPutMessageStatus() == PutMessageStatus.PUT_OK;
             if (sendStatus) {
+                // 投递成功
                 ScheduleMessageService.this.updateOffset(this.delayLevel, resultProcess.getNextOffset());
             }
             return sendStatus;
         }
 
+        /**
+         * 异步投递
+         */
         private boolean asyncDeliver(MessageExtBrokerInner msgInner, String msgId, long offset, long offsetPy,
             int sizePy) {
+            // 获取该延迟等级的异步投递任务队列
             Queue<PutResultProcess> processesQueue = ScheduleMessageService.this.deliverPendingTable.get(this.delayLevel);
 
-            //Flow Control
+            //Flow Control 流控
             int currentPendingNum = processesQueue.size();
             int maxPendingLimit = ScheduleMessageService.this.defaultMessageStore.getMessageStoreConfig()
                 .getScheduleAsyncDeliverMaxPendingLimit();
+            // 如果当前队列中进行中任务数量大于阈值，流控，返回投递失败
             if (currentPendingNum > maxPendingLimit) {
                 log.warn("Asynchronous deliver triggers flow control, " +
                     "currentPendingNum={}, maxPendingLimit={}", currentPendingNum, maxPendingLimit);
                 return false;
             }
 
-            //Blocked
+            //Blocked 阻塞，因当前队列第一个任务重试次数过多导致
             PutResultProcess firstProcess = processesQueue.peek();
             if (firstProcess != null && firstProcess.need2Blocked()) {
                 log.warn("Asynchronous deliver block. info={}", firstProcess.toString());
                 return false;
             }
 
+            // 投递消息，创建投递消息异步任务
             PutResultProcess resultProcess = deliverMessage(msgInner, msgId, offset, offsetPy, sizePy, true);
+            // 将投递消息异步任务加入队列，等待异步投递线程处理
             processesQueue.add(resultProcess);
             return true;
         }
 
+        /**
+         * 创建投递消息异步任务
+         */
         private PutResultProcess deliverMessage(MessageExtBrokerInner msgInner, String msgId, long offset,
             long offsetPy, int sizePy, boolean autoResend) {
             CompletableFuture<PutMessageResult> future =
@@ -527,6 +582,9 @@ public class ScheduleMessageService extends ConfigManager {
         }
     }
 
+    /**
+     * 异步投递消息任务状态更新任务
+     */
     public class HandlePutResultTask implements Runnable {
         private final int delayLevel;
 
@@ -540,16 +598,20 @@ public class ScheduleMessageService extends ConfigManager {
                 ScheduleMessageService.this.deliverPendingTable.get(this.delayLevel);
 
             PutResultProcess putResultProcess;
+            // 循环获取队列中第一个投递任务，查看其执行状态并执行对应操作
             while ((putResultProcess = pendingQueue.peek()) != null) {
                 try {
                     switch (putResultProcess.getStatus()) {
                         case SUCCESS:
+                            // 消息投递成功，从队列中移除该投递任务
                             ScheduleMessageService.this.updateOffset(this.delayLevel, putResultProcess.getNextOffset());
                             pendingQueue.remove();
                             break;
                         case RUNNING:
+                            // 正在投递，不做操作
                             break;
                         case EXCEPTION:
+                            // 投递出错
                             if (!isStarted()) {
                                 log.warn("HandlePutResultTask shutdown, info={}", putResultProcess.toString());
                                 return;
@@ -558,6 +620,7 @@ public class ScheduleMessageService extends ConfigManager {
                             putResultProcess.doResend();
                             break;
                         case SKIP:
+                            // 跳过，直接从队列中移除
                             log.warn("putResultProcess skip, info={}", putResultProcess.toString());
                             pendingQueue.remove();
                             break;
@@ -568,6 +631,7 @@ public class ScheduleMessageService extends ConfigManager {
                 }
             }
 
+            // 等待0.01s，继续下一次扫描
             if (isStarted()) {
                 ScheduleMessageService.this.handleExecutorService
                     .schedule(new HandlePutResultTask(this.delayLevel), DELAY_FOR_A_SLEEP, TimeUnit.MILLISECONDS);
@@ -575,6 +639,9 @@ public class ScheduleMessageService extends ConfigManager {
         }
     }
 
+    /**
+     * 延迟消息异步投递任务
+     */
     public class PutResultProcess {
         private String topic;
         private long offset;
@@ -585,7 +652,9 @@ public class ScheduleMessageService extends ConfigManager {
         private boolean autoResend = false;
         private CompletableFuture<PutMessageResult> future;
 
+        // 投递重试次数
         private volatile int resendCount = 0;
+        // 任务执行状态
         private volatile ProcessStatus status = ProcessStatus.RUNNING;
 
         public PutResultProcess setTopic(String topic) {
@@ -683,6 +752,9 @@ public class ScheduleMessageService extends ConfigManager {
             return this;
         }
 
+        /**
+         * 处理消息投递结果，成功则更新统计数据，失败则执行异常操作
+         */
         private void handleResult(PutMessageResult result) {
             if (result != null && result.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
                 onSuccess(result);
@@ -705,6 +777,9 @@ public class ScheduleMessageService extends ConfigManager {
             }
         }
 
+        /**
+         * 消息投递异常，重试或跳过
+         */
         public void onException() {
             log.warn("ScheduleMessageService onException, info: {}", this.toString());
             if (this.autoResend) {
@@ -726,6 +801,9 @@ public class ScheduleMessageService extends ConfigManager {
             }
         }
 
+        /**
+         * 重新投递消息
+         */
         public void doResend() {
             log.info("Resend message, info: {}", this.toString());
 
@@ -737,13 +815,14 @@ public class ScheduleMessageService extends ConfigManager {
             }
 
             try {
+                // 查询消息
                 MessageExt msgExt = ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(this.physicOffset, this.physicSize);
                 if (msgExt == null) {
                     log.warn("ScheduleMessageService resend not found message. info: {}", this.toString());
                     this.status = need2Skip() ? ProcessStatus.SKIP : ProcessStatus.EXCEPTION;
                     return;
                 }
-
+                // 重投递消息（同步）
                 MessageExtBrokerInner msgInner = ScheduleMessageService.this.messageTimeup(msgExt);
                 PutMessageResult result = ScheduleMessageService.this.writeMessageStore.putMessage(msgInner);
                 this.handleResult(result);
@@ -756,12 +835,18 @@ public class ScheduleMessageService extends ConfigManager {
             }
         }
 
+        /**
+         * 当重试次数大于设置的阈值（3），阻塞当前level对应的线程继续投递
+         */
         public boolean need2Blocked() {
             int maxResendNum2Blocked = ScheduleMessageService.this.defaultMessageStore.getMessageStoreConfig()
                 .getScheduleAsyncDeliverMaxResendNum2Blocked();
             return this.resendCount > maxResendNum2Blocked;
         }
 
+        /**
+         * 当重试的次数大于阈值（6），跳过该消息投递
+         */
         public boolean need2Skip() {
             int maxResendNum2Blocked = ScheduleMessageService.this.defaultMessageStore.getMessageStoreConfig()
                 .getScheduleAsyncDeliverMaxResendNum2Blocked();

@@ -32,6 +32,10 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 文件变化监听线程
+ * 监听文件md5值变化，执行回调函数
+ */
 public class FileWatchService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -47,6 +51,7 @@ public class FileWatchService extends ServiceThread {
         this.watchFiles = new ArrayList<>();
         this.fileCurrentHash = new ArrayList<>();
 
+        // 将文件路径放入watchFiles，计算机文件md5值放入fileCurrentHash
         for (int i = 0; i < watchFiles.length; i++) {
             if (StringUtils.isNotEmpty(watchFiles[i]) && new File(watchFiles[i]).exists()) {
                 this.watchFiles.add(watchFiles[i]);
@@ -60,6 +65,10 @@ public class FileWatchService extends ServiceThread {
         return "FileWatchService";
     }
 
+    /**
+     * 500ms检验一次文件md5值
+     * 如两次计算的md5值不同，调用对应的回调函数
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
@@ -88,6 +97,9 @@ public class FileWatchService extends ServiceThread {
         log.info(this.getServiceName() + " service end");
     }
 
+    /**
+     * 计算文件md5值
+     */
     private String hash(String filePath) throws IOException {
         Path path = Paths.get(filePath);
         md.update(Files.readAllBytes(path));
