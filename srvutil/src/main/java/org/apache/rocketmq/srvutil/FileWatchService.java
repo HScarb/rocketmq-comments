@@ -32,6 +32,10 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.org.slf4j.Logger;
 import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 
+/**
+ * 文件变化监听线程
+ * 监听文件md5值变化，执行回调函数
+ */
 public class FileWatchService extends LifecycleAwareServiceThread {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -43,6 +47,7 @@ public class FileWatchService extends LifecycleAwareServiceThread {
     public FileWatchService(final String[] watchFiles,
         final Listener listener) throws Exception {
         this.listener = listener;
+        // 将文件路径放入watchFiles，计算机文件md5值放入fileCurrentHash
         for (String file : watchFiles) {
             if (!Strings.isNullOrEmpty(file) && new File(file).exists()) {
                 currentHash.put(file, md5Digest(file));
@@ -55,6 +60,10 @@ public class FileWatchService extends LifecycleAwareServiceThread {
         return "FileWatchService";
     }
 
+    /**
+     * 500ms检验一次文件md5值
+     * 如两次计算的md5值不同，调用对应的回调函数
+     */
     @Override
     public void run0() {
         log.info(this.getServiceName() + " service started");
@@ -83,6 +92,7 @@ public class FileWatchService extends LifecycleAwareServiceThread {
      * <p>
      * As we know exactly what to do when file does not exist or when IO exception is raised, there is no need to
      * propagate the exception up.
+     * 计算文件md5值
      *
      * @param filePath Absolute path of the file to calculate its MD5 digest.
      * @return Hash of the file content if exists; empty string otherwise.

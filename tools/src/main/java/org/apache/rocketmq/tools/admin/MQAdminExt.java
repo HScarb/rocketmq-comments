@@ -151,6 +151,15 @@ public interface MQAdminExt extends MQAdmin {
 
     AdminToolResult<ConsumeStats> examineConsumeStatsConcurrent(String consumerGroup, String topic);
 
+    /**
+     * 获取集群信息
+     * @return
+     * @throws InterruptedException
+     * @throws MQBrokerException
+     * @throws RemotingTimeoutException
+     * @throws RemotingSendRequestException
+     * @throws RemotingConnectException
+     */
     ClusterInfo examineBrokerClusterInfo() throws InterruptedException, MQBrokerException, RemotingTimeoutException,
         RemotingSendRequestException, RemotingConnectException;
 

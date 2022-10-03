@@ -40,20 +40,34 @@ import org.apache.rocketmq.common.stats.MomentStatsItemSet;
 import org.apache.rocketmq.common.stats.StatsItem;
 import org.apache.rocketmq.common.stats.StatsItemSet;
 
+/**
+ * 监控数据采集类
+ */
 public class BrokerStatsManager {
 
+    // 队列写入消息数
     @Deprecated public static final String QUEUE_PUT_NUMS = Stats.QUEUE_PUT_NUMS;
+    // 队列写入字节数
     @Deprecated public static final String QUEUE_PUT_SIZE = Stats.QUEUE_PUT_SIZE;
+    // 队列获取消息数
     @Deprecated public static final String QUEUE_GET_NUMS = Stats.QUEUE_GET_NUMS;
+    // 队列获取字节数
     @Deprecated public static final String QUEUE_GET_SIZE = Stats.QUEUE_GET_SIZE;
+    // 主题写入消息数
     @Deprecated public static final String TOPIC_PUT_NUMS = Stats.TOPIC_PUT_NUMS;
+    // 主题写入字节数
     @Deprecated public static final String TOPIC_PUT_SIZE = Stats.TOPIC_PUT_SIZE;
 
+    // 消费组获取消息数
     @Deprecated public static final String GROUP_GET_NUMS = Stats.GROUP_GET_NUMS;
+    // 消费组获取字节数
     @Deprecated public static final String GROUP_GET_SIZE = Stats.GROUP_GET_SIZE;
 
+    // 消费组重试消息发送数
     @Deprecated public static final String SNDBCK_PUT_NUMS = Stats.SNDBCK_PUT_NUMS;
+    // 集群消息写入数
     @Deprecated public static final String BROKER_PUT_NUMS = Stats.BROKER_PUT_NUMS;
+    // 集群消息获取数
     @Deprecated public static final String BROKER_GET_NUMS = Stats.BROKER_GET_NUMS;
     @Deprecated public static final String GROUP_GET_FROM_DISK_NUMS = Stats.GROUP_GET_FROM_DISK_NUMS;
     @Deprecated public static final String GROUP_GET_FROM_DISK_SIZE = Stats.GROUP_GET_FROM_DISK_SIZE;
@@ -109,6 +123,7 @@ public class BrokerStatsManager {
 
     @Deprecated public static final String GROUP_GET_FALL_SIZE = Stats.GROUP_GET_FALL_SIZE;
     @Deprecated public static final String GROUP_GET_FALL_TIME = Stats.GROUP_GET_FALL_TIME;
+    // 消费组维度拉取延迟时间
     // Pull Message Latency
     @Deprecated public static final String GROUP_GET_LATENCY = Stats.GROUP_GET_LATENCY;
 
@@ -135,7 +150,9 @@ public class BrokerStatsManager {
     private ScheduledExecutorService commercialExecutor;
     private ScheduledExecutorService accountExecutor;
 
+    // 存储各个监控项的统计数据，key 为统计指标，value 为数据采集项的数据集合
     private final HashMap<String, StatsItemSet> statsTable = new HashMap<>();
+    // 集群名称
     private final String clusterName;
     private final boolean enableQueueStat;
     private MomentStatsItemSet momentStatsItemSetFallSize;
@@ -419,6 +436,12 @@ public class BrokerStatsManager {
         this.statsTable.get(Stats.TOPIC_PUT_NUMS).addValue(topic, 1, 1);
     }
 
+    /**
+     * 监控数据，添加 Topic 维度消息数量
+     * @param topic
+     * @param num 写入消息条数
+     * @param times 消息写入数量变化次数（该方法调用次数）
+     */
     public void incTopicPutNums(final String topic, int num, int times) {
         this.statsTable.get(Stats.TOPIC_PUT_NUMS).addValue(topic, num, times);
     }

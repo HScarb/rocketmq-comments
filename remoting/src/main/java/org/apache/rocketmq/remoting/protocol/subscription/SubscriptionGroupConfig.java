@@ -20,24 +20,36 @@ package org.apache.rocketmq.remoting.protocol.subscription;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.rocketmq.common.MixAll;
 
+/**
+ * 消费组订阅配置
+ * 持久化在 store/config/subscriptionGroup.json
+ */
 public class SubscriptionGroupConfig {
 
+    // 消费组名
     private String groupName;
 
+    // 是否可以消费
     private boolean consumeEnable = true;
+    // 是否允许从队列最小偏移量开始消费（未使用）
     private boolean consumeFromMinEnable = true;
+    // 消费组是否能以广播模式消费
     private boolean consumeBroadcastEnable = true;
     private boolean consumeMessageOrderly = false;
 
+    // 重试队列个数，每个 Broker 上有一个
     private int retryQueueNums = 1;
 
+    // 消息最大重复消费次数
     private int retryMaxTimes = 16;
     private GroupRetryPolicy groupRetryPolicy = new GroupRetryPolicy();
 
     private long brokerId = MixAll.MASTER_ID;
 
+    // 如果消息阻塞，转向该 broker 上拉取消息
     private long whichBrokerWhenConsumeSlowly = 1;
 
+    // 当消费发生变化时，是否立即进行消息队列重新负载
     private boolean notifyConsumerIdsChangedEnable = true;
 
     private int groupSysFlag = 0;

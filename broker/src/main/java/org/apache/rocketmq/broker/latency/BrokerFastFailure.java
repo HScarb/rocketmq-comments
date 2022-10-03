@@ -33,6 +33,8 @@ import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 /**
  * BrokerFastFailure will cover {@link BrokerController#getSendThreadPoolQueue()} and {@link
  * BrokerController#getPullThreadPoolQueue()}
+ * Broker快速失败
+ * 启动一个定时调度线程，每隔10ms去等待处理请求队列中第一个排队元素
  */
 public class BrokerFastFailure {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
@@ -62,6 +64,7 @@ public class BrokerFastFailure {
     }
 
     public void start() {
+        // 启动定时任务，每隔10ms清理一下等待超时的请求
         this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.brokerController.getBrokerConfig()) {
             @Override
             public void run0() {
@@ -72,16 +75,21 @@ public class BrokerFastFailure {
         }, 1000, 10, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 取消队列中超时的请求
+     */
     private void cleanExpiredRequest() {
-
+        // 如果Page Cache忙，取消并返回一些发送请求，直到Page Cache空闲
         while (this.brokerController.getMessageStore().isOSPageCacheBusy()) {
             try {
                 if (!this.brokerController.getSendThreadPoolQueue().isEmpty()) {
+                    // 获取请求队列中最早进入的请求
                     final Runnable runnable = this.brokerController.getSendThreadPoolQueue().poll(0, TimeUnit.SECONDS);
                     if (null == runnable) {
                         break;
                     }
 
+                    // 直接返回PCBUSY_CLEAN_QUEUE
                     final RequestTask rt = castRunnable(runnable);
                     if (rt != null) {
                         rt.returnResponse(RemotingSysResponseCode.SYSTEM_BUSY, String.format(
@@ -97,18 +105,22 @@ public class BrokerFastFailure {
             }
         }
 
+        // 清理超时的发送请求，默认200ms
         cleanExpiredRequestInQueue(this.brokerController.getSendThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInSendQueue());
 
+        // 清理超时的拉取请求，默认5s
         cleanExpiredRequestInQueue(this.brokerController.getPullThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInPullQueue());
 
+        // 清理超时的心跳请求，默认31s
         cleanExpiredRequestInQueue(this.brokerController.getLitePullThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInLitePullQueue());
 
         cleanExpiredRequestInQueue(this.brokerController.getHeartbeatThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInHeartbeatQueue());
 
+        // 清理超时的事务请求，默认3s
         cleanExpiredRequestInQueue(this.brokerController.getEndTransactionThreadPoolQueue(), this
             .brokerController.getBrokerConfig().getWaitTimeMillsInTransactionQueue());
 
@@ -116,10 +128,14 @@ public class BrokerFastFailure {
             brokerController.getBrokerConfig().getWaitTimeMillsInAckQueue());
     }
 
+    /**
+     * 将请求队列中超时的请求移除并直接返回超时
+     */
     void cleanExpiredRequestInQueue(final BlockingQueue<Runnable> blockingQueue, final long maxWaitTimeMillsInQueue) {
         while (true) {
             try {
                 if (!blockingQueue.isEmpty()) {
+                    // 从请求队列中获取最早进入的请求
                     final Runnable runnable = blockingQueue.peek();
                     if (null == runnable) {
                         break;
@@ -129,8 +145,10 @@ public class BrokerFastFailure {
                         break;
                     }
 
+                    // 计算延迟时间，判断是否超过阈值
                     final long behind = System.currentTimeMillis() - rt.getCreateTimestamp();
                     if (behind >= maxWaitTimeMillsInQueue) {
+                        // 如果超过等待阈值，直接返回TIMEOUT_CLEAN_QUEUE
                         if (blockingQueue.remove(runnable)) {
                             rt.setStopRun(true);
                             rt.returnResponse(RemotingSysResponseCode.SYSTEM_BUSY, String.format("[TIMEOUT_CLEAN_QUEUE]broker busy, start flow control for a while, period in queue: %sms, size of queue: %d", behind, blockingQueue.size()));
@@ -140,6 +158,7 @@ public class BrokerFastFailure {
                             }
                         }
                     } else {
+                        // 如果没有超过等待阈值，说明后面的请求也都没有超时，退出循环
                         break;
                     }
                 } else {

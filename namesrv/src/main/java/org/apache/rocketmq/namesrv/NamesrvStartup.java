@@ -40,6 +40,9 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.srvutil.ServerUtil;
 import org.apache.rocketmq.srvutil.ShutdownHookThread;
 
+/**
+ * Name server 启动类
+ */
 public class NamesrvStartup {
 
     private final static Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
@@ -90,10 +93,13 @@ public class NamesrvStartup {
             return;
         }
 
+        // 初始化 Name server 配置参数
         namesrvConfig = new NamesrvConfig();
+        // 初始化 Name server 网络配置（Netty 服务端配置）
         nettyServerConfig = new NettyServerConfig();
         nettyClientConfig = new NettyClientConfig();
         nettyServerConfig.setListenPort(9876);
+        // 使用 -c 指定配置文件路径
         if (commandLine.hasOption('c')) {
             String file = commandLine.getOptionValue('c');
             if (file != null) {
@@ -114,7 +120,9 @@ public class NamesrvStartup {
             }
         }
 
+        // 加载命令行中指定的属性，形如 --listenPort 9876
         MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
+        // 使用 -p 打印当前加载配置属性
         if (commandLine.hasOption('p')) {
             MixAll.printObjectProperties(logConsole, namesrvConfig);
             MixAll.printObjectProperties(logConsole, nettyServerConfig);
@@ -129,6 +137,7 @@ public class NamesrvStartup {
             System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation%n", MixAll.ROCKETMQ_HOME_ENV);
             System.exit(-2);
         }
+        // 打印 Name server 配置参数
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
 
@@ -136,6 +145,7 @@ public class NamesrvStartup {
 
     public static NamesrvController createAndStartNamesrvController() throws Exception {
 
+        // 初始化 Name server 控制器
         NamesrvController controller = createNamesrvController();
         start(controller);
         NettyServerConfig serverConfig = controller.getNettyServerConfig();
@@ -159,17 +169,20 @@ public class NamesrvStartup {
             throw new IllegalArgumentException("NamesrvController is null");
         }
 
+        // 初始化 NamesrvController：加载 KVConfig，初始化 Netty remoting server，添加定时任务
         boolean initResult = controller.initialize();
         if (!initResult) {
             controller.shutdown();
             System.exit(-3);
         }
 
+        // 注册 JVM 钩子函数，在 JVM 完全关闭之前，执行该方法，关闭 Name server
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, (Callable<Void>) () -> {
             controller.shutdown();
             return null;
         }));
 
+        // 启动 NamesrvController，主要是启动 Netty remoting server
         controller.start();
 
         return controller;

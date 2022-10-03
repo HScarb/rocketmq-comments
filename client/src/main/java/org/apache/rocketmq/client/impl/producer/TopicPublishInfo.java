@@ -23,6 +23,16 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 
+/**
+ * Topic发送配置信息，用于消息生产
+ * <p>
+ * 一个Topic对应一个TopicPublishInfo
+ * <p>
+ * 一个TopicPublishInfo中有多个MessageQueue
+ * <p>
+ * MessageQueue可以是一个Broker中对应的Queue，也可以是多台Broker，取决于TOpic的创建
+ * 如果Topic在多个Broker中都创建了，那么就这些Queue就包含多台Broker中的Queue
+ */
 public class TopicPublishInfo {
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;
@@ -66,10 +76,19 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 选择队列
+     * 上一次发送成功则选择下一个队列，上一次发送失败会规避上次发送的 MessageQueue 所在的 Broker
+     *
+     * @param lastBrokerName 上次发送的 Broker 名称，如果为空表示上次发送成功
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
+            // 轮询队列，选择下一个队列
             return selectOneMessageQueue();
         } else {
+            // 上次发送失败，规避上次发送的 MessageQueue 所在的 Broker
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int index = this.sendWhichQueue.incrementAndGet();
                 int pos = index % this.messageQueueList.size();
@@ -83,6 +102,7 @@ public class TopicPublishInfo {
     }
 
     public MessageQueue selectOneMessageQueue() {
+        // 自增队列选择 index
         int index = this.sendWhichQueue.incrementAndGet();
         int pos = index % this.messageQueueList.size();
 

@@ -369,11 +369,22 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
 
     }
 
+    /**
+     * 创建 Topic 请求调用
+     * @param addr
+     * @param defaultTopic
+     * @param topicConfig
+     * @param timeoutMillis
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     * @throws MQClientException
+     */
     public void createTopic(final String addr, final String defaultTopic, final TopicConfig topicConfig,
         final long timeoutMillis)
         throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         Validators.checkTopicConfig(topicConfig);
-
+        // 构建请求头
         CreateTopicRequestHeader requestHeader = new CreateTopicRequestHeader();
         requestHeader.setTopic(topicConfig.getTopicName());
         requestHeader.setDefaultTopic(defaultTopic);
@@ -532,6 +543,9 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
 
     }
 
+    /**
+     * 同步发送消息
+     */
     public SendResult sendMessage(
         final String addr,
         final String brokerName,
@@ -710,6 +724,23 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         }
     }
 
+    /**
+     * 异步发送错误处理逻辑
+     *
+     * @param brokerName
+     * @param msg
+     * @param timeoutMillis
+     * @param request
+     * @param sendCallback
+     * @param topicPublishInfo
+     * @param instance
+     * @param timesTotal
+     * @param curTimes
+     * @param e
+     * @param context
+     * @param needRetry
+     * @param producer
+     */
     private void onExceptionImpl(final String brokerName,
         final Message msg,
         final long timeoutMillis,
@@ -1453,6 +1484,19 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         return response.getCode() == ResponseCode.SUCCESS;
     }
 
+    /**
+     * 消费者将消费失败的消息发送回 Broker
+     *
+     * @param addr Broker 地址
+     * @param msg 发回的消息内容
+     * @param consumerGroup 消费组
+     * @param delayLevel 延迟等级
+     * @param timeoutMillis 超时时间
+     * @param maxConsumeRetryTimes 最大重新消费次数
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public void consumerSendMessageBack(
         final String addr,
         final String brokerName,
@@ -1487,6 +1531,17 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
     }
 
+    /**
+     * 向 Broker 发送批量锁定消息队列请求 LOCK_BATCH_MQ
+     *
+     * @param addr
+     * @param requestBody
+     * @param timeoutMillis
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public Set<MessageQueue> lockBatchMQ(
         final String addr,
         final LockBatchRequestBody requestBody,

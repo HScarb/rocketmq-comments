@@ -33,6 +33,9 @@ import org.apache.rocketmq.tools.command.CommandUtil;
 import org.apache.rocketmq.tools.command.SubCommand;
 import org.apache.rocketmq.tools.command.SubCommandException;
 
+/**
+ * 更新 Topic 子命令（创建、修改）
+ */
 public class UpdateTopicSubCommand implements SubCommand {
 
     @Override
@@ -101,6 +104,7 @@ public class UpdateTopicSubCommand implements SubCommand {
 
         try {
             TopicConfig topicConfig = new TopicConfig();
+            // 设置默认读写队列数量都为 8
             topicConfig.setReadQueueNums(8);
             topicConfig.setWriteQueueNums(8);
             topicConfig.setTopicName(commandLine.getOptionValue('t').trim());
@@ -146,8 +150,10 @@ public class UpdateTopicSubCommand implements SubCommand {
             topicConfig.setOrder(isOrder);
 
             if (commandLine.hasOption('b')) {
+                // 指定 Broker 地址创建，只会创建到一个 Broker
                 String addr = commandLine.getOptionValue('b').trim();
 
+                // 向 Broker 发请求，更新 Topic
                 defaultMQAdminExt.start();
                 defaultMQAdminExt.createAndUpdateTopicConfig(addr, topicConfig);
 
@@ -163,12 +169,15 @@ public class UpdateTopicSubCommand implements SubCommand {
                 return;
 
             } else if (commandLine.hasOption('c')) {
+                // 指定集群名称创建
                 String clusterName = commandLine.getOptionValue('c').trim();
 
                 defaultMQAdminExt.start();
 
+                // 获取所有 Broker 主节点
                 Set<String> masterSet =
                     CommandUtil.fetchMasterAddrByClusterName(defaultMQAdminExt, clusterName);
+                // 对所有 Broker 主节点都发请求，更新 Topic
                 for (String addr : masterSet) {
                     defaultMQAdminExt.createAndUpdateTopicConfig(addr, topicConfig);
                     System.out.printf("create topic to %s success.%n", addr);

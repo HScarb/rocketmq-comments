@@ -571,6 +571,7 @@ public class BrokerController {
             }
         }, initialDelay, period, TimeUnit.MILLISECONDS);
 
+        // 每 10s 持久化消费进度到磁盘
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -641,6 +642,7 @@ public class BrokerController {
                     this.updateMasterHAServerAddrPeriodically = true;
                 }
 
+                // 启动Slave信息同步的定时任务，每10s执行一次元数据同步任务
                 this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
                     @Override
@@ -927,12 +929,17 @@ public class BrokerController {
         this.transactionalMessageCheckService = new TransactionalMessageCheckService(this);
     }
 
+    /**
+     * ACL（访问控制列表）初始化
+     */
     private void initialAcl() {
         if (!this.brokerConfig.isAclEnable()) {
             LOG.info("The broker dose not enable acl");
             return;
         }
 
+        // 使用SPI机制加载配置的AccessValidator实现类
+        // 读取METAINF/service/org.apache.rocketmq.acl.AccessValidator文件中配置的访问验证器PlainAccessValidator
         List<AccessValidator> accessValidators = ServiceProvider.load(AccessValidator.class);
         if (accessValidators.isEmpty()) {
             LOG.info("ServiceProvider loaded no AccessValidator, using default org.apache.rocketmq.acl.plain.PlainAccessValidator");
@@ -942,14 +949,20 @@ public class BrokerController {
         for (AccessValidator accessValidator : accessValidators) {
             final AccessValidator validator = accessValidator;
             accessValidatorMap.put(validator.getClass(), validator);
+            // 向Broker处理服务启注册钩子函数
             this.registerServerRPCHook(new RPCHook() {
-
+                /**
+                 * 在服务端接收到请求并解码后、执行处理请求前被调用
+                 */
                 @Override
                 public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
                     //Do not catch the exception
                     validator.validate(validator.parse(request, remoteAddr));
                 }
 
+                /**
+                 * 在处理完请求后调用
+                 */
                 @Override
                 public void doAfterResponse(String remoteAddr, RemotingCommand request, RemotingCommand response) {
                 }
@@ -969,6 +982,11 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 创建和注册Broker请求处理类
+     * RocketMQ按照业务逻辑区分请求处理器，每个类型的请求码对应一个业务处理器（NettyRequestProcessor）
+     * 这样就实现了为不同请求码设置对应线程池，实现不同请求线程池的隔离
+     */
     public void registerProcessor() {
         /*
          * SendMessageProcessor
@@ -1575,6 +1593,7 @@ public class BrokerController {
             this.registerBrokerAll(true, false, true);
         }
 
+        // 开启定时任务，每 10s 向所有 name server 发送心跳
         scheduledFutures.add(this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.getBrokerIdentity()) {
             @Override
             public void run0() {
@@ -1635,6 +1654,11 @@ public class BrokerController {
         }, 1000, brokerConfig.getBrokerHeartbeatInterval(), TimeUnit.MILLISECONDS));
     }
 
+    /**
+     * 增量更新元数据修改到所有 Nameserver
+     * @param topicConfig
+     * @param dataVersion
+     */
     public synchronized void registerIncrementBrokerData(TopicConfig topicConfig, DataVersion dataVersion) {
         this.registerIncrementBrokerData(Collections.singletonList(topicConfig), dataVersion);
     }
@@ -1647,8 +1671,10 @@ public class BrokerController {
         TopicConfigAndMappingSerializeWrapper topicConfigSerializeWrapper = new TopicConfigAndMappingSerializeWrapper();
         topicConfigSerializeWrapper.setDataVersion(dataVersion);
 
+        // 构造增量修改的 Topic 元数据表
         ConcurrentMap<String, TopicConfig> topicConfigTable = topicConfigList.stream()
             .map(topicConfig -> {
+                // 根据 Broker 的读写权限，修改 Topic 的读写权限
                 TopicConfig registerTopicConfig;
                 if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
                     || !PermName.isReadable(this.getBrokerConfig().getBrokerPermission())) {
@@ -1676,9 +1702,17 @@ public class BrokerController {
             topicConfigSerializeWrapper.setTopicQueueMappingInfoMap(topicQueueMappingInfoMap);
         }
 
+        // 将 Broker 元数据更新到 Nameserver
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
     }
 
+    /**
+     * 向所有 NameServer 发送心跳
+     *
+     * @param checkOrderConfig
+     * @param oneway
+     * @param forceRegister
+     */
     public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
 
         TopicConfigAndMappingSerializeWrapper topicConfigWrapper = new TopicConfigAndMappingSerializeWrapper();

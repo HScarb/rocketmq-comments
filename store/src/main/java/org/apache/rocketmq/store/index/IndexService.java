@@ -34,6 +34,9 @@ import org.apache.rocketmq.store.DefaultMessageStore;
 import org.apache.rocketmq.store.DispatchRequest;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 消息索引服务
+ */
 public class IndexService {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     /**
@@ -41,10 +44,13 @@ public class IndexService {
      */
     private static final int MAX_TRY_IDX_CREATE = 3;
     private final DefaultMessageStore defaultMessageStore;
+    // 索引配置
     private final int hashSlotNum;
     private final int indexNum;
     private final String storePath;
+    // 索引文件集合
     private final ArrayList<IndexFile> indexFileList = new ArrayList<>();
+    // 读写锁（针对indexFileList）
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public IndexService(final DefaultMessageStore store) {
@@ -55,17 +61,24 @@ public class IndexService {
             StorePathConfigHelper.getStorePathIndex(defaultMessageStore.getMessageStoreConfig().getStorePathRootDir());
     }
 
+    /**
+     * 重新加载索引文件
+     *
+     * @param lastExitOK 上次是否是正常退出
+     * @return 加载是否成功
+     */
     public boolean load(final boolean lastExitOK) {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
         if (files != null) {
-            // ascending order
+            // ascending order, 将索引文件按照创建时间升序排序
             Arrays.sort(files);
             for (File file : files) {
+                // 依次加载每个索引文件
                 try {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
                     f.load();
-
+                    // 如果上一次是异常退出，则删除check point之后的所有索引文件
                     if (!lastExitOK) {
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
                             .getIndexMsgTimestamp()) {
@@ -96,6 +109,11 @@ public class IndexService {
         return (long) indexFileList.get(0).getFileSize() * indexFileList.size();
     }
 
+    /**
+     * 删除消息CommitLog偏移量offset之前的所有IndexFile文件
+     *
+     * @param offset CommitLog偏移量
+     */
     public void deleteExpiredFile(long offset) {
         Object[] files = null;
         try {
@@ -104,6 +122,7 @@ public class IndexService {
                 return;
             }
 
+            // 比较第一个 IndexFile 的最大 offset， 如果小于 offset，说明不需要删除任何文件
             long endPhyOffset = this.indexFileList.get(0).getEndPhyOffset();
             if (endPhyOffset < offset) {
                 files = this.indexFileList.toArray();
@@ -114,6 +133,7 @@ public class IndexService {
             this.readWriteLock.readLock().unlock();
         }
 
+        // 有文件需要被删除，遍历所有文件，删除所有最大 offset 小于 CommitLog offset 的文件
         if (files != null) {
             List<IndexFile> fileList = new ArrayList<>();
             for (int i = 0; i < (files.length - 1); i++) {
@@ -129,6 +149,11 @@ public class IndexService {
         }
     }
 
+    /**
+     * 删除IndexFile列表中的所有IndexFile文件
+     *
+     * @param files 需要删除的IndexFile列表
+     */
     private void deleteExpiredFile(List<IndexFile> files) {
         if (!files.isEmpty()) {
             try {
@@ -163,6 +188,16 @@ public class IndexService {
         }
     }
 
+    /**
+     * 根据topic和message key，从IndexFile中查找消息
+     *
+     * @param topic
+     * @param key
+     * @param maxNum 最大查找消息数量
+     * @param begin 查找消息最小时间
+     * @param end 查找消息最大时间
+     * @return
+     */
     public QueryOffsetResult queryOffset(String topic, String key, int maxNum, long begin, long end) {
         List<Long> phyOffsets = new ArrayList<>(maxNum);
 
@@ -172,6 +207,7 @@ public class IndexService {
         try {
             this.readWriteLock.readLock().lock();
             if (!this.indexFileList.isEmpty()) {
+                // 从后往前遍历IndexFile，查找索引对应的message符合时间的IndexFile
                 for (int i = this.indexFileList.size(); i > 0; i--) {
                     IndexFile f = this.indexFileList.get(i - 1);
                     boolean lastFile = i == this.indexFileList.size();
@@ -181,10 +217,11 @@ public class IndexService {
                     }
 
                     if (f.isTimeMatched(begin, end)) {
-
+                        // 最后一个文件需要加锁
                         f.selectPhyOffset(phyOffsets, buildKey(topic, key), maxNum, begin, end);
                     }
 
+                    // 再往前遍历时间更不符合
                     if (f.getBeginTimestamp() < begin) {
                         break;
                     }
@@ -207,6 +244,11 @@ public class IndexService {
         return topic + "#" + key;
     }
 
+    /**
+     * 根据 DispatchRequest 构建索引
+     *
+     * @param req 消息存入CommitLog之后重新分发到Index文件的 DispatchRequest
+     */
     public void buildIndex(DispatchRequest req) {
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
@@ -218,6 +260,7 @@ public class IndexService {
                 return;
             }
 
+            // 如果是事务消息的回滚消息，不需要创建索引，直接返回
             final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
             switch (tranType) {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
@@ -229,6 +272,7 @@ public class IndexService {
             }
 
             if (req.getUniqKey() != null) {
+                // 创建UniqueKey的索引，也就是msgId的索引
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
                     LOGGER.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());
@@ -236,6 +280,7 @@ public class IndexService {
                 }
             }
 
+            // 创建消息key的索引，这里key可以有多个
             if (keys != null && keys.length() > 0) {
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
@@ -277,6 +322,7 @@ public class IndexService {
     public IndexFile retryGetAndCreateIndexFile() {
         IndexFile indexFile = null;
 
+        // 如果创建失败，尝试重建3次
         for (int times = 0; null == indexFile && times < MAX_TRY_IDX_CREATE; times++) {
             indexFile = this.getAndCreateLastIndexFile();
             if (null != indexFile) {
@@ -291,6 +337,7 @@ public class IndexService {
             }
         }
 
+        // 重试多次，仍然无法创建索引文件
         if (null == indexFile) {
             this.defaultMessageStore.getRunningFlags().makeIndexFileError();
             LOGGER.error("Mark index file cannot build flag");
@@ -299,16 +346,22 @@ public class IndexService {
         return indexFile;
     }
 
+    /**
+     * 获取最后一个索引文件，如果集合为空或者最后一个文件写满了，则新建一个文件<br>
+     * 只有一个线程调用，所以不存在写竟争问题
+     */
     public IndexFile getAndCreateLastIndexFile() {
         IndexFile indexFile = null;
         IndexFile prevIndexFile = null;
         long lastUpdateEndPhyOffset = 0;
         long lastUpdateIndexTimestamp = 0;
-
+        // 先尝试使用读锁
         {
             this.readWriteLock.readLock().lock();
+            // 判断文件列表是否为空
             if (!this.indexFileList.isEmpty()) {
                 IndexFile tmp = this.indexFileList.get(this.indexFileList.size() - 1);
+                // 判断最后一个文件是否写满，如果写满了，indexFile变量仍然置为空
                 if (!tmp.isWriteFull()) {
                     indexFile = tmp;
                 } else {
@@ -321,6 +374,7 @@ public class IndexService {
             this.readWriteLock.readLock().unlock();
         }
 
+        // 如果文件列表为空或者最后一个文件写满了，使用写锁创建文件，然后将写满的文件刷盘
         if (indexFile == null) {
             try {
                 String fileName =
@@ -337,6 +391,7 @@ public class IndexService {
                 this.readWriteLock.writeLock().unlock();
             }
 
+            // 每创建一个新文件，前一个文件异步刷盘
             if (indexFile != null) {
                 final IndexFile flushThisFile = prevIndexFile;
 
@@ -355,6 +410,11 @@ public class IndexService {
         return indexFile;
     }
 
+    /**
+     * 索引文件刷盘，在一个文件写满后调用
+     *
+     * @param f 需要刷盘的索引文件
+     */
     public void flush(final IndexFile f) {
         if (null == f) {
             return;
@@ -366,8 +426,10 @@ public class IndexService {
             indexMsgTimestamp = f.getEndTimestamp();
         }
 
+        // 索引文件刷盘
         f.flush();
 
+        // checkpoint文件刷盘
         if (indexMsgTimestamp > 0) {
             this.defaultMessageStore.getStoreCheckpoint().setIndexMsgTimestamp(indexMsgTimestamp);
             this.defaultMessageStore.getStoreCheckpoint().flush();

@@ -79,17 +79,24 @@ public class RemotingCommand {
         }
     }
 
+    // 请求命令编码，表示请求命令类型
     private int code;
     private LanguageCode language = LanguageCode.JAVA;
+    // 版本号
     private int version = 0;
+    // 客户端请求序号
     private int opaque = requestId.getAndIncrement();
+    // 标记。倒数第一位表示请求类型，0：请求；1：返回。倒数第二位，1：单项发送
     private int flag = 0;
+    // 描述
     private String remark;
+    // 扩展属性
     private HashMap<String, String> extFields;
+    // 请求头信息
     private transient CommandCustomHeader customHeader;
 
     private SerializeType serializeTypeCurrentRPC = serializeTypeConfigInThisServer;
-
+    // 消息体
     private transient byte[] body;
     private boolean suspended;
     private Stopwatch processTimer;
@@ -413,6 +420,11 @@ public class RemotingCommand {
         }
     }
 
+    /**
+     * makeCustomHeaderToNet方法是将customHeader中定义的键值对参数写入extFields中
+     * 比如我们在测试用例中，写入了requestHeader.setCount(1);
+     *   requestHeader.setMessageTitle("Welcome");
+     */
     public void makeCustomHeaderToNet() {
         if (this.customHeader != null) {
             Field[] fields = getClazzFields(customHeader.getClass());

@@ -51,6 +51,7 @@ public class PullMessageRequestHeader extends TopicQueueRequestHeader implements
     private String subscription;
     @CFNotNull
     private Long subVersion;
+    @CFNullable
     private String expressionType;
 
     @CFNullable

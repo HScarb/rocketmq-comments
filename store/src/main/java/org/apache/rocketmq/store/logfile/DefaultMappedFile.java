@@ -58,7 +58,11 @@ import org.apache.rocketmq.store.util.LibC;
 import sun.misc.Unsafe;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 内存映射文件实现
+ */
 public class DefaultMappedFile extends AbstractMappedFile {
+    // 操作系统内存页大小，默认4kb
     public static final int OS_PAGE_SIZE = 1024 * 4;
     public static final Unsafe UNSAFE = getUnsafe();
     private static final Method IS_LOADED_METHOD;
@@ -66,12 +70,15 @@ public class DefaultMappedFile extends AbstractMappedFile {
 
     protected static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // 当前JVM中映射的虚拟内存总大小
     protected static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
-
+    // 当前JVM中mmap句柄数量
     protected static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
-
+    // 当前文件写指针，写到什么位置
     protected static final AtomicIntegerFieldUpdater<DefaultMappedFile> WROTE_POSITION_UPDATER;
+    // 当前文件提交指针。如果开启transientStorePoolEnable，则数据会存储在TransientStorePool中，然后提交到内存映射ByteBuffer中，再写入磁盘
     protected static final AtomicIntegerFieldUpdater<DefaultMappedFile> COMMITTED_POSITION_UPDATER;
+    // 该指针之前的数据全部持久化到硬盘中
     protected static final AtomicIntegerFieldUpdater<DefaultMappedFile> FLUSHED_POSITION_UPDATER;
 
     protected volatile int wrotePosition;
@@ -84,7 +91,9 @@ public class DefaultMappedFile extends AbstractMappedFile {
      */
     protected ByteBuffer writeBuffer = null;
     protected TransientStorePool transientStorePool = null;
+    // 文件名
     protected String fileName;
+    // 起始偏移量
     protected long fileFromOffset;
     protected File file;
     protected MappedByteBuffer mappedByteBuffer;
@@ -114,6 +123,9 @@ public class DefaultMappedFile extends AbstractMappedFile {
         IS_LOADED_METHOD = isLoaded0method;
     }
 
+    /**
+     * 普通 MappedFile，读写 PageCache
+     */
     public DefaultMappedFile() {
     }
 
@@ -121,6 +133,12 @@ public class DefaultMappedFile extends AbstractMappedFile {
         init(fileName, fileSize);
     }
 
+    /**
+     * 开启 TransientStorePool 的 MappedFile
+     * 写堆外内存，异步提交到 PageCache，异步刷盘
+     * 读 PageCache
+     * 被 {@link AllocateMappedFileService} 调用
+     */
     public DefaultMappedFile(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize, transientStorePool);
@@ -134,6 +152,9 @@ public class DefaultMappedFile extends AbstractMappedFile {
         return TOTAL_MAPPED_VIRTUAL_MEMORY.get();
     }
 
+    /**
+     * 使用 TransientStorePool 的 MappedFile 初始化
+     */
     @Override
     public void init(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
@@ -152,7 +173,9 @@ public class DefaultMappedFile extends AbstractMappedFile {
         UtilAll.ensureDirOK(this.file.getParent());
 
         try {
+            // 创建 FileChannel
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
+            // 内存映射
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
             TOTAL_MAPPED_FILES.incrementAndGet();
@@ -346,17 +369,22 @@ public class DefaultMappedFile extends AbstractMappedFile {
     }
 
     /**
+     * 文件刷盘
+     *
+     * @param flushLeastPages 最少刷盘页数
      * @return The current flushed position
      */
     @Override
     public int flush(final int flushLeastPages) {
         if (this.isAbleToFlush(flushLeastPages)) {
+            // 计数器+1
             if (this.hold()) {
+                // 写的位置
                 int value = getReadPosition();
 
                 try {
                     this.mappedByteBufferAccessCountSinceLastSwap++;
-
+                    // 强制刷盘
                     //We only append data to fileChannel or mappedByteBuffer, never both.
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
                         this.fileChannel.force(false);
@@ -369,6 +397,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
                 }
 
                 FLUSHED_POSITION_UPDATER.set(this, value);
+                // 计数器-1
                 this.release();
             } else {
                 log.warn("in flush, hold failed, flush offset = " + FLUSHED_POSITION_UPDATER.get(this));
@@ -424,6 +453,11 @@ public class DefaultMappedFile extends AbstractMappedFile {
         }
     }
 
+    /**
+     *
+     * @param flushLeastPages
+     * @return
+     */
     private boolean isAbleToFlush(final int flushLeastPages) {
         int flush = FLUSHED_POSITION_UPDATER.get(this);
         int write = getReadPosition();
@@ -534,8 +568,16 @@ public class DefaultMappedFile extends AbstractMappedFile {
         return true;
     }
 
+    /**
+     * 尝试删除文件
+     *
+     * @param intervalForcibly 强制删除等待时间，如果一个文件被其他线程使用，第一次尝试删除过后intervalForcibly ms才能真正被删除
+     * @return 是否被destory成功，上层调用需要对失败情况处理，失败后尝试重试
+     */
     @Override
     public boolean destroy(final long intervalForcibly) {
+        // 尝试关闭该文件，释放引用，关闭内存映射
+        // 如果该文件被其他线程使用（引用计数>0），则先设为不可用，下次删除时
         this.shutdown(intervalForcibly);
 
         if (this.isCleanupOver()) {
@@ -587,6 +629,9 @@ public class DefaultMappedFile extends AbstractMappedFile {
         COMMITTED_POSITION_UPDATER.set(this, pos);
     }
 
+    /**
+     * 文件预热，避免读写时缺页异常
+     */
     @Override
     public void warmMappedFile(FlushDiskType type, int pages) {
         this.mappedByteBufferAccessCountSinceLastSwap++;
@@ -595,6 +640,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
         long flush = 0;
         // long time = System.currentTimeMillis();
+        // 通过写入 1G 的字节 0 来让操作系统分配物理内存空间，如果没有填充值，操作系统不会实际分配物理内存，防止在写入消息时发生缺页异常
         for (long i = 0, j = 0; i < this.fileSize; i += DefaultMappedFile.OS_PAGE_SIZE, j++) {
             byteBuffer.put((int) i, (byte) 0);
             // force flush when flush disk type is sync
@@ -727,11 +773,13 @@ public class DefaultMappedFile extends AbstractMappedFile {
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
         Pointer pointer = new Pointer(address);
         {
+            // 通过系统调用 mlock 锁定该文件的 Page Cache，防止其被交换到 swap 空间
             int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));
             log.info("mlock {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }
 
         {
+            // 通过系统调用 madvise 给操作系统建议，说明该文件在不久的将来要被访问
             int ret = LibC.INSTANCE.madvise(pointer, new NativeLong(this.fileSize), LibC.MADV_WILLNEED);
             log.info("madvise {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }

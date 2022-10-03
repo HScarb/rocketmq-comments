@@ -67,6 +67,9 @@ import org.apache.rocketmq.remoting.protocol.header.namesrv.WipeWritePermOfBroke
 import org.apache.rocketmq.remoting.protocol.namesrv.RegisterBrokerResult;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 
+/**
+ * Name server 网络请求处理类
+ */
 public class DefaultRequestProcessor implements NettyRequestProcessor {
     private static Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
@@ -97,22 +100,30 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
             case RequestCode.QUERY_DATA_VERSION:
                 return this.queryBrokerTopicConfig(ctx, request);
             case RequestCode.REGISTER_BROKER:
+                // Broker 注册自身信息到 NameServer，处理 Broker 心跳请求
                 return this.registerBroker(ctx, request);
             case RequestCode.UNREGISTER_BROKER:
+                // Broker 取消注册
                 return this.unregisterBroker(ctx, request);
             case RequestCode.BROKER_HEARTBEAT:
                 return this.brokerHeartbeat(ctx, request);
             case RequestCode.GET_BROKER_MEMBER_GROUP:
+                // 处理客户端拉取 Topic 路由信息请求
                 return this.getBrokerMemberGroup(ctx, request);
             case RequestCode.GET_BROKER_CLUSTER_INFO:
+                // 获取 Broker 集群信息
                 return this.getBrokerClusterInfo(ctx, request);
             case RequestCode.WIPE_WRITE_PERM_OF_BROKER:
+                // 删除 Broker 的写权限
                 return this.wipeWritePermOfBroker(ctx, request);
             case RequestCode.ADD_WRITE_PERM_OF_BROKER:
+                // 添加 Broker 的写权限
                 return this.addWritePermOfBroker(ctx, request);
             case RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER:
+                // 获取全部 Topic 名字
                 return this.getAllTopicListFromNameserver(ctx, request);
             case RequestCode.DELETE_TOPIC_IN_NAMESRV:
+                // 删除 Topic 信息
                 return this.deleteTopicInNamesrv(ctx, request);
             case RequestCode.REGISTER_TOPIC_IN_NAMESRV:
                 return this.registerTopicToNamesrv(ctx, request);
@@ -129,8 +140,10 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
             case RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST:
                 return this.getHasUnitSubUnUnitTopicList(ctx, request);
             case RequestCode.UPDATE_NAMESRV_CONFIG:
+                // 更新 NameServer 配置，当前配置时实时生效的
                 return this.updateConfig(ctx, request);
             case RequestCode.GET_NAMESRV_CONFIG:
+                // 获取 NameServer 配置
                 return this.getConfig(ctx, request);
             case RequestCode.GET_CLIENT_CONFIG:
                 return this.getClientConfigs(ctx, request);
@@ -233,6 +246,7 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
             topicConfigWrapper = extractRegisterTopicConfigFromRequest(request);
         }
 
+        // 调用路由信息管理器。处理 Broker 发送的心跳信息，存到本地路由表
         RegisterBrokerResult result = this.namesrvController.getRouteInfoManager().registerBroker(
             requestHeader.getClusterName(),
             requestHeader.getBrokerAddr(),
@@ -352,6 +366,13 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 处理 Broker 心跳请求
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     public RemotingCommand unregisterBroker(ChannelHandlerContext ctx,
             RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -368,6 +389,9 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 处理客户端拉取路由信息请求，返回包含 TopicRouteData 的返回体
+     */
     public RemotingCommand brokerHeartbeat(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);

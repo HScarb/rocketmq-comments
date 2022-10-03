@@ -16,12 +16,13 @@
  */
 package org.apache.rocketmq.common;
 
-import java.util.concurrent.TimeUnit;
 import org.apache.rocketmq.common.annotation.ImportantField;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageRequestMode;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.common.utils.NetworkUtil;
+
+import java.util.concurrent.TimeUnit;
 
 public class BrokerConfig extends BrokerIdentity {
 
@@ -37,8 +38,10 @@ public class BrokerConfig extends BrokerIdentity {
     @ImportantField
     private int listenPort = 6888;
 
+    // 当前Broker监听的IP，默认为网卡的InetAddress
     @ImportantField
     private String brokerIP1 = NetworkUtil.getLocalAddress();
+    // 存在主从Broker时，如果在Broker主节点上配置了brokerIP2属性，Broker从节点会连接主节点配置的brokerIP2进行同步
     private String brokerIP2 = NetworkUtil.getLocalAddress();
 
     @ImportantField
@@ -57,8 +60,10 @@ public class BrokerConfig extends BrokerIdentity {
     private String messageStorePlugIn = "";
 
     private static final int PROCESSOR_NUMBER = Runtime.getRuntime().availableProcessors();
+    // 消息轨迹消息默认存储的 Topic 名称
     @ImportantField
     private String msgTraceTopicName = TopicValidator.RMQ_SYS_TRACE_TOPIC;
+    // 是否使用默认 Topic 存储消息轨迹消息，默认 Topic 为 RMQ_SYS_TRACE_TOPIC，只有 1 个队列
     @ImportantField
     private boolean traceTopicEnable = false;
     /**

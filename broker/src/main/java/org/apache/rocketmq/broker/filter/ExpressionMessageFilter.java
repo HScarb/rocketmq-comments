@@ -30,6 +30,9 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.store.ConsumeQueueExt;
 import org.apache.rocketmq.store.MessageFilter;
 
+/**
+ * 按表达式过滤消息的过滤器
+ */
 public class ExpressionMessageFilter implements MessageFilter {
 
     protected static final Logger log = LoggerFactory.getLogger(LoggerName.FILTER_LOGGER_NAME);
@@ -56,29 +59,42 @@ public class ExpressionMessageFilter implements MessageFilter {
         }
     }
 
+    /**
+     * 根据 ConsumeQueue 中的属性哈希码进行过滤
+     *
+     * @param tagsCode tagsCode
+     * @param cqExtUnit extend unit of consume queue
+     * @return
+     */
     @Override
     public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
         if (null == subscriptionData) {
             return true;
         }
 
+        // 如果是类过滤模式，直接返回 true
         if (subscriptionData.isClassFilterMode()) {
             return true;
         }
 
+        // Tag 过滤
         // by tags code.
         if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
 
+            // 消息发送时没有设置 Tag，返回 true
             if (tagsCode == null) {
                 return true;
             }
 
+            // 允许任意 Tag，返回 true
             if (subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL)) {
                 return true;
             }
 
+            // 返回过滤数据的 Tag 哈希码表中是否包含发送消息的哈希码
             return subscriptionData.getCodeSet().contains(tagsCode.intValue());
         } else {
+            // SQL92 表达式过滤
             // no expression or no bloom
             if (consumerFilterData == null || consumerFilterData.getExpression() == null
                 || consumerFilterData.getCompiledExpression() == null || consumerFilterData.getBloomFilterData() == null) {
@@ -113,16 +129,25 @@ public class ExpressionMessageFilter implements MessageFilter {
         return true;
     }
 
+    /**
+     * 根据 CommitLog 中保存的消息内容进行过滤，主要为 SQL92 表达式模式过滤服务
+     *
+     * @param msgBuffer message buffer in commit log, may be null if not invoked in store.
+     * @param properties message properties, should decode from buffer if null by yourself.
+     * @return
+     */
     @Override
     public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
         if (subscriptionData == null) {
             return true;
         }
 
+        // 类过滤模式
         if (subscriptionData.isClassFilterMode()) {
             return true;
         }
 
+        // TAG 模式
         if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
             return true;
         }
@@ -136,6 +161,7 @@ public class ExpressionMessageFilter implements MessageFilter {
             return true;
         }
 
+        // 从消息 Buffer 中解码消息属性
         if (tempProperties == null && msgBuffer != null) {
             tempProperties = MessageDecoder.decodeProperties(msgBuffer);
         }
@@ -144,6 +170,7 @@ public class ExpressionMessageFilter implements MessageFilter {
         try {
             MessageEvaluationContext context = new MessageEvaluationContext(tempProperties);
 
+            // 根据编译好的表达式进行过滤
             ret = realFilterData.getCompiledExpression().evaluate(context);
         } catch (Throwable e) {
             log.error("Message Filter error, " + realFilterData + ", " + tempProperties, e);

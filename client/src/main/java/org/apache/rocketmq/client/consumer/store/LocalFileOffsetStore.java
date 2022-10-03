@@ -38,6 +38,7 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 
 /**
  * Local storage implementation
+ * 本地消费进度存储，广播模式使用
  */
 public class LocalFileOffsetStore implements OffsetStore {
     public final static String LOCAL_OFFSET_STORE_DIR = System.getProperty(
@@ -45,8 +46,10 @@ public class LocalFileOffsetStore implements OffsetStore {
         System.getProperty("user.home") + File.separator + ".rocketmq_offsets");
     private final static Logger log = LoggerFactory.getLogger(LocalFileOffsetStore.class);
     private final MQClientInstance mQClientFactory;
+    // 消息消费组名
     private final String groupName;
     private final String storePath;
+    // 消息消费进度表，存在内存中等待刷盘。Key：消息队列对象，Value：消费偏移量
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<>();
 
@@ -59,6 +62,11 @@ public class LocalFileOffsetStore implements OffsetStore {
             "offsets.json";
     }
 
+    /**
+     * 从磁盘中加载消息消费进度信息到内存
+     *
+     * @throws MQClientException
+     */
     @Override
     public void load() throws MQClientException {
         OffsetSerializeWrapper offsetSerializeWrapper = this.readLocalOffset();
@@ -129,6 +137,12 @@ public class LocalFileOffsetStore implements OffsetStore {
         return -1;
     }
 
+    /**
+     * 将内存中的消费进度持久化到磁盘
+     * 消费者 MQClientInstance 启动定时任务，每 5s 持久化一次
+     *
+     * @param mqs
+     */
     @Override
     public void persistAll(Set<MessageQueue> mqs) {
         if (null == mqs || mqs.isEmpty())

@@ -28,8 +28,12 @@ import org.apache.rocketmq.common.utils.ThreadUtils;
 import org.apache.rocketmq.logging.org.slf4j.Logger;
 import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 
+/**
+ * 消息拉取线程，推模式消费者后台拉取消息
+ */
 public class PullMessageService extends ServiceThread {
     private final Logger logger = LoggerFactory.getLogger(PullMessageService.class);
+    // 拉取请求队列，阻塞队列
     private final LinkedBlockingQueue<MessageRequest> messageRequestQueue = new LinkedBlockingQueue<>();
 
     private final MQClientInstance mQClientFactory;
@@ -45,6 +49,12 @@ public class PullMessageService extends ServiceThread {
         this.mQClientFactory = mQClientFactory;
     }
 
+    /**
+     * 一定时间之后执行拉取（延迟一段时间将拉取请求放入队列）
+     *
+     * @param pullRequest
+     * @param timeDelay
+     */
     public void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         if (!isStopped()) {
             this.scheduledExecutorService.schedule(new Runnable() {
@@ -58,6 +68,15 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * 立即执行拉取消息请求（立即将拉取请求放入队列）
+     * 每个 MessageQueue 复用一个拉取请求 PullRequest
+     * 在如下位置被调用
+     * - 重平衡完
+     * - 一次拉取任务执行完
+     *
+     * @param pullRequest
+     */
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {
             this.messageRequestQueue.put(pullRequest);
@@ -99,6 +118,11 @@ public class PullMessageService extends ServiceThread {
         return scheduledExecutorService;
     }
 
+    /**
+     * 拉取消息
+     *
+     * @param pullRequest
+     */
     private void pullMessage(final PullRequest pullRequest) {
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
@@ -123,12 +147,17 @@ public class PullMessageService extends ServiceThread {
     public void run() {
         logger.info(this.getServiceName() + " service started");
 
+        // 如果是启动状态，无限循环。stopped 是 volatile 的变量
         while (!this.isStopped()) {
             try {
+                // 从拉取请求队列中获取一个拉取请求
                 MessageRequest messageRequest = this.messageRequestQueue.take();
+                // 执行拉取消息请求，拉取消息
                 if (messageRequest.getMessageRequestMode() == MessageRequestMode.POP) {
+                    // Pop 消费
                     this.popMessage((PopRequest)messageRequest);
                 } else {
+                    // Pull 消费
                     this.pullMessage((PullRequest)messageRequest);
                 }
             } catch (InterruptedException ignored) {

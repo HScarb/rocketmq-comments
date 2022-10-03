@@ -517,13 +517,22 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
     }
 
 
+    /**
+     * 过滤消费，订阅 Topic 并且指定过滤表达式
+     *
+     * @param topic 订阅的 Topic
+     * @param subExpression 过滤表达式
+     * @throws MQClientException
+     */
     public synchronized void subscribe(String topic, String subExpression) throws MQClientException {
         try {
             if (topic == null || "".equals(topic)) {
                 throw new IllegalArgumentException("Topic can not be null or empty.");
             }
             setSubscriptionType(SubscriptionType.SUBSCRIBE);
+            // 用 Topic 和过滤表达式构建订阅信息
             SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(topic, subExpression);
+            // 将订阅信息加入 RebalanceImpl，以便其进行消息队列负载
             this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
             this.defaultLitePullConsumer.setMessageQueueListener(new MessageQueueListenerImpl());
             assignedMessageQueue.setRebalanceImpl(this.rebalanceImpl);

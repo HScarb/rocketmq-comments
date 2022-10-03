@@ -28,13 +28,19 @@ import org.apache.rocketmq.logging.org.slf4j.Logger;
 import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.store.logfile.DefaultMappedFile;
 
+/**
+ * 记录存储文件的最新刷盘时间。用于Broker异常重启时数据恢复
+ */
 public class StoreCheckpoint {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
+    // CommitLog最新刷盘时间
     private volatile long physicMsgTimestamp = 0;
+    // ConsumeQueue最新刷盘时间
     private volatile long logicsMsgTimestamp = 0;
+    // IndexFile最新刷盘时间
     private volatile long indexMsgTimestamp = 0;
     private volatile long masterFlushedOffset = 0;
 

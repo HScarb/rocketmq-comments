@@ -44,15 +44,25 @@ public class ConsumeMessageTraceHookImpl implements ConsumeMessageHook {
         return "ConsumeMessageTraceHook";
     }
 
+    /**
+     * 消息消费前调用
+     * 收集将要消费消息的轨迹信息，存入轨迹上下文，然后发送
+     *
+     * @param context
+     */
     @Override
     public void consumeMessageBefore(ConsumeMessageContext context) {
         if (context == null || context.getMsgList() == null || context.getMsgList().isEmpty()) {
             return;
         }
+        // 创建消息轨迹上下文
         TraceContext traceContext = new TraceContext();
         context.setMqTraceContext(traceContext);
+        // 设置消息轨迹类型
         traceContext.setTraceType(TraceType.SubBefore);//
+        // 设置消费组名
         traceContext.setGroupName(NamespaceUtil.withoutNamespace(context.getConsumerGroup()));//
+        // 将消费到的消息构建 TraceBean 列表，采集每条消息的轨迹数据
         List<TraceBean> beans = new ArrayList<>();
         for (MessageExt msg : context.getMsgList()) {
             if (msg == null) {
@@ -76,6 +86,7 @@ public class ConsumeMessageTraceHookImpl implements ConsumeMessageHook {
             traceContext.setRegionId(regionId);//
             beans.add(traceBean);
         }
+        // 将消息轨迹交给异步发送者处理
         if (beans.size() > 0) {
             traceContext.setTraceBeans(beans);
             traceContext.setTimeStamp(System.currentTimeMillis());
@@ -83,17 +94,25 @@ public class ConsumeMessageTraceHookImpl implements ConsumeMessageHook {
         }
     }
 
+    /**
+     * 消息消费后调用
+     * 采集消费完成的消息轨迹数据，存入轨迹上下文，然后发送
+     *
+     * @param context
+     */
     @Override
     public void consumeMessageAfter(ConsumeMessageContext context) {
         if (context == null || context.getMsgList() == null || context.getMsgList().isEmpty()) {
             return;
         }
+        // 从轨迹上下文获取消费前的轨迹数据
         TraceContext subBeforeContext = (TraceContext) context.getMqTraceContext();
 
         if (subBeforeContext.getTraceBeans() == null || subBeforeContext.getTraceBeans().size() < 1) {
             // If subBefore bean is null ,skip it
             return;
         }
+        // 构建消费后的轨迹数据
         TraceContext subAfterContext = new TraceContext();
         subAfterContext.setTraceType(TraceType.SubAfter);//
         subAfterContext.setRegionId(subBeforeContext.getRegionId());//
@@ -112,6 +131,7 @@ public class ConsumeMessageTraceHookImpl implements ConsumeMessageHook {
                 subAfterContext.setContextCode(ConsumeReturnType.valueOf(contextType).ordinal());
             }
         }
+        // 发给异步发送者处理
         localDispatcher.append(subAfterContext);
     }
 }

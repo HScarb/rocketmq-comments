@@ -19,10 +19,14 @@ package org.apache.rocketmq.store;
 
 import java.util.Map;
 
+/**
+ * 新消息到达监听器接口
+ */
 public interface MessageArrivingListener {
 
     /**
      * Notify that a new message arrives in a consume queue
+     * 新消息到达
      * @param topic topic name
      * @param queueId consume queue id
      * @param logicOffset consume queue offset
