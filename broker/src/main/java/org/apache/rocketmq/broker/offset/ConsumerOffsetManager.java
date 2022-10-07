@@ -188,9 +188,9 @@ public class ConsumerOffsetManager extends ConfigManager {
     }
 
     /**
-     * 持久化消费进度
+     * 提交消费进度
      *
-     * @param clientHost
+     * @param clientHost 客户端 host
      * @param group
      * @param topic
      * @param queueId
@@ -204,7 +204,7 @@ public class ConsumerOffsetManager extends ConfigManager {
     }
 
     /**
-     * 持久化消费进度，将消费进度保存到缓存表
+     * 提交消费进度，将消费进度保存到内存缓存表
      *
      * @param clientHost
      * @param key
@@ -241,6 +241,7 @@ public class ConsumerOffsetManager extends ConfigManager {
     /**
      * If the target queue has temporary reset offset, return the reset-offset.
      * Otherwise, return the current consume offset in the offset store.
+     * 查询队列的消费进度
      * @param group Consumer group
      * @param topic Topic
      * @param queueId Queue ID

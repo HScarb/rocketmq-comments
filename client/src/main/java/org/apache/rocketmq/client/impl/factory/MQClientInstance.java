@@ -1092,6 +1092,11 @@ public class MQClientInstance {
 
     /**
      * 根据Broker名和BrokerId获取Broker地址
+     *
+     * @param brokerName Broker名
+     * @param brokerId BrokerId
+     * @param onlyThisBroker 如果 brokerId 对应的地址没找到，true: 返回 null，false: 返回 brokerName 任一有效地址
+     * @return Broker地址
      */
     public FindBrokerResult findBrokerAddressInSubscribe(
         final String brokerName,
@@ -1105,17 +1110,21 @@ public class MQClientInstance {
         boolean slave = false;
         boolean found = false;
 
+        // 从内存缓存中根据 broker 名查询 broker 组
         HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
         if (map != null && !map.isEmpty()) {
             brokerAddr = map.get(brokerId);
+            // 是否从节点，只有 ID 为 0 的是 主节点
             slave = brokerId != MixAll.MASTER_ID;
             found = brokerAddr != null;
 
+            // 没找到 brokerId 对应的地址，尝试找 brokerId + 1 的节点地址
             if (!found && slave) {
                 brokerAddr = map.get(brokerId + 1);
                 found = brokerAddr != null;
             }
 
+            // brokerId 和 brokerId + 1 的节点地址都为空，且可以尝试查找任意 brokerId 的地址，那么尝试获取一个存了地址的 brokerId 对应的地址
             if (!found && !onlyThisBroker) {
                 Entry<Long, String> entry = map.entrySet().iterator().next();
                 brokerAddr = entry.getValue();
@@ -1181,14 +1190,16 @@ public class MQClientInstance {
     public Set<MessageQueueAssignment> queryAssignment(final String topic, final String consumerGroup,
         final String strategyName, final MessageModel messageModel, int timeout)
         throws RemotingException, InterruptedException, MQBrokerException {
-        //
+        // 尝试从缓存中获取 Broker 地址
         String brokerAddr = this.findBrokerAddrByTopic(topic);
         if (null == brokerAddr) {
+            // 缓存中 Broker 地址为空，从 NameServer 请求刷新 Broker 地址缓存，然后再获取 Broker 地址
             this.updateTopicRouteInfoFromNameServer(topic);
             brokerAddr = this.findBrokerAddrByTopic(topic);
         }
 
         if (null != brokerAddr) {
+            // 发送 QUERY_ASSIGNMENT 请求到 Broker
             return this.mQClientAPIImpl.queryAssignment(brokerAddr, topic, consumerGroup, clientId, strategyName,
                 messageModel, timeout);
         }
@@ -1197,9 +1208,10 @@ public class MQClientInstance {
     }
 
     /**
+     * 从缓存的路由信息表中根据 Topic 获取 Topic 所在的 Broker 地址中的随机一个
      *
      * @param topic
-     * @return
+     * @return Broker 地址
      */
     public String findBrokerAddrByTopic(final String topic) {
         TopicRouteData topicRouteData = this.topicRouteTable.get(topic);

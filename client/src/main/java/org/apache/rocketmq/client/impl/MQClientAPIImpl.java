@@ -319,6 +319,21 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         this.remotingClient.shutdown();
     }
 
+    /**
+     * 查询 Broker 重平衡分配的结果
+     *
+     * @param addr
+     * @param topic
+     * @param consumerGroup
+     * @param clientId
+     * @param strategyName
+     * @param messageModel
+     * @param timeoutMillis
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public Set<MessageQueueAssignment> queryAssignment(final String addr, final String topic,
         final String consumerGroup, final String clientId, final String strategyName,
         final MessageModel messageModel, final long timeoutMillis)
@@ -880,6 +895,17 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         return null;
     }
 
+    /**
+     * 异步发送 POP 消息请求
+     *
+     * @param brokerName
+     * @param addr
+     * @param requestHeader
+     * @param timeoutMillis
+     * @param popCallback
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
     public void popMessageAsync(
         final String brokerName, final String addr, final PopMessageRequestHeader requestHeader,
         final long timeoutMillis, final PopCallback popCallback
@@ -1068,6 +1094,17 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
             responseHeader.getMaxOffset(), null, responseHeader.getSuggestWhichBrokerId(), response.getBody(), responseHeader.getOffsetDelta());
     }
 
+    /**
+     * 处理 POP 消息结果
+     *
+     * @param brokerName
+     * @param response
+     * @param topic
+     * @param requestHeader
+     * @return
+     * @throws MQBrokerException
+     * @throws RemotingCommandException
+     */
     private PopResult processPopResponse(final String brokerName, final RemotingCommand response, String topic,
         CommandCustomHeader requestHeader) throws MQBrokerException, RemotingCommandException {
         PopStatus popStatus = PopStatus.NO_NEW_MSG;

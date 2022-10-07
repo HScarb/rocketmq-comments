@@ -390,15 +390,15 @@ public class PullAPIWrapper {
 
 
     /**
-     *
-     * @param mq
-     * @param invisibleTime
-     * @param maxNums
-     * @param consumerGroup
-     * @param timeout
-     * @param popCallback
+     * 异步 POP 消息
+     * @param mq 拉取的消息队列
+     * @param invisibleTime Broker 端消息不可见时间
+     * @param maxNums 最大拉取条数
+     * @param consumerGroup 消费组
+     * @param timeout 拉取请求超时
+     * @param popCallback 拉取完成回调
      * @param poll
-     * @param initMode
+     * @param initMode 从头或者从最大位移处拉取
     //     * @param expressionType
     //     * @param expression
      * @param order
@@ -409,6 +409,7 @@ public class PullAPIWrapper {
     public void popAsync(MessageQueue mq, long invisibleTime, int maxNums, String consumerGroup,
                          long timeout, PopCallback popCallback, boolean poll, int initMode, boolean order, String expressionType, String expression)
         throws MQClientException, RemotingException, InterruptedException {
+        // 从缓存中查找 Broker 地址
         FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);
         if (null == findBrokerResult) {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());

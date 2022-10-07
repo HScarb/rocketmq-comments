@@ -126,6 +126,12 @@ public class HookUtils {
         return null;
     }
 
+    /**
+     * 存储消息前，处理定时消息
+     * @param brokerController
+     * @param msg
+     * @return
+     */
     public static PutMessageResult handleScheduleMessage(BrokerController brokerController,
         final MessageExtBrokerInner msg) {
         final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
@@ -133,6 +139,7 @@ public class HookUtils {
             || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             if (!isRolledTimerMessage(msg)) {
                 if (checkIfTimerMessage(msg)) {
+                    // 如果是定时消息
                     if (!brokerController.getMessageStoreConfig().isTimerWheelEnable()) {
                         //wheel timer is not enabled, reject the message
                         return new PutMessageResult(PutMessageStatus.WHEEL_TIMER_NOT_ENABLE, null);
@@ -176,10 +183,17 @@ public class HookUtils {
         return null != msg.getProperty(MessageConst.PROPERTY_TIMER_DELIVER_MS) || null != msg.getProperty(MessageConst.PROPERTY_TIMER_DELAY_MS) || null != msg.getProperty(MessageConst.PROPERTY_TIMER_DELAY_SEC);
     }
 
+    /**
+     * 处理定时消息，替换 Topic，放入定时 Topic
+     * @param brokerController
+     * @param msg
+     * @return null：处理成功
+     */
     private static PutMessageResult transformTimerMessage(BrokerController brokerController,
         MessageExtBrokerInner msg) {
         //do transform
         int delayLevel = msg.getDelayTimeLevel();
+        // 计算定时消息投递时间
         long deliverMs;
         try {
             if (msg.getProperty(MessageConst.PROPERTY_TIMER_DELAY_SEC) != null) {
@@ -197,6 +211,7 @@ public class HookUtils {
                 return new PutMessageResult(PutMessageStatus.WHEEL_TIMER_MSG_ILLEGAL, null);
             }
 
+            // 定时消息精度
             int timerPrecisionMs = brokerController.getMessageStoreConfig().getTimerPrecisionMs();
             if (deliverMs % timerPrecisionMs == 0) {
                 deliverMs -= timerPrecisionMs;
@@ -207,9 +222,11 @@ public class HookUtils {
             if (brokerController.getTimerMessageStore().isReject(deliverMs)) {
                 return new PutMessageResult(PutMessageStatus.WHEEL_TIMER_FLOW_CONTROL, null);
             }
+            // 将真正 Topic 存入消息属性
             MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TIMER_OUT_MS, deliverMs + "");
             MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_TOPIC, msg.getTopic());
             MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msg.getQueueId()));
+            // 替换 Topic 为定时消息 Topic
             msg.setPropertiesString(MessageDecoder.messageProperties2String(msg.getProperties()));
             msg.setTopic(TimerMessageStore.TIMER_TOPIC);
             msg.setQueueId(0);

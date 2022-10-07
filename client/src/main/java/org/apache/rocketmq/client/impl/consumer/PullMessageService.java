@@ -98,6 +98,10 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * 立即执行 Pop 模式拉取任务
+     * @param popRequest
+     */
     public void executePopPullRequestImmediately(final PopRequest popRequest) {
         try {
             this.messageRequestQueue.put(popRequest);
@@ -133,6 +137,11 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * Pop 模式拉取消息
+     *
+     * @param popRequest
+     */
     private void popMessage(final PopRequest popRequest) {
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(popRequest.getConsumerGroup());
         if (consumer != null) {

@@ -117,6 +117,13 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
         return this.offsetStore.readOffset(mq, fromStore ? ReadOffsetType.READ_FROM_STORE : ReadOffsetType.MEMORY_FIRST_THEN_STORE);
     }
 
+    /**
+     * 获取负载的队列
+     *
+     * @param topic
+     * @return 重平衡后负载的队列
+     * @throws MQClientException
+     */
     public Set<MessageQueue> fetchMessageQueuesInBalance(String topic) throws MQClientException {
         this.isRunning();
         if (null == topic) {

@@ -112,6 +112,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
 
         switch (response.getCode()) {
             case ResponseCode.SUCCESS:
+                // 拉取成功，更新统计信息
                 this.brokerController.getBrokerStatsManager().incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                     getMessageResult.getMessageCount());
 
@@ -137,7 +138,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                 }
 
                 if (this.brokerController.getBrokerConfig().isTransferMsgByHeap()) {
-
+                    // 消息通过堆传输，将拉到的消息存到 byte buffer，设置到 response body 中返回
                     final long beginTimeMills = this.brokerController.getMessageStore().now();
                     final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId());
                     this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
@@ -146,6 +147,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     response.setBody(r);
                     return response;
                 } else {
+                    // 消息通过堆外内存传输，实现 Netty 的 FileRegion 接口，将要发送的消息 ByteBuf 存入，实现 transferTo 方法
                     try {
                         FileRegion fileRegion =
                             new ManyMessageTransfer(response.encodeHeader(getMessageResult.getBufferTotalSize()), getMessageResult);

@@ -134,6 +134,14 @@ public class BrokerConfig extends BrokerIdentity {
     private boolean accountStatsEnable = true;
     private boolean accountStatsPrintZeroValues = true;
 
+    // 是否通过堆内存传输数据
+    /**
+     * 是否通过堆内存传输数据
+     * <ul>
+     *     <li>false: 通过堆外内存传输数据，相比堆内存传输减少了数据拷贝、零字节拷贝、效率更高。但发送大量消息时可能造成堆外内存分配不够，触发系统内存回收和落盘</li>
+     *     <li>true: 通过堆内存传输数据，运行更平稳</li>
+     * <ul/>
+     */
     private boolean transferMsgByHeap = true;
     private int maxDelayTime = 40;
 
@@ -221,8 +229,10 @@ public class BrokerConfig extends BrokerIdentity {
     private boolean enableSkipLongAwaitingAck = false;
     private long reviveAckWaitMs = TimeUnit.MINUTES.toMillis(3);
     private boolean enablePopLog = false;
+    // 是否支持 CheckPoint 在内存中直接 ACK
     private boolean enablePopBufferMerge = false;
     private int popCkStayBufferTime = 10 * 1000;
+    // CheckPoint 存在于内存 Buffer 的时间
     private int popCkStayBufferTimeOut = 3 * 1000;
     private int popCkMaxBufferSize = 200000;
     private int popCkOffsetMaxQueueSize = 20000;

@@ -28,8 +28,10 @@ public class GetMessageResult {
     private final List<Long> messageQueueOffset;
 
     private GetMessageStatus status;
+    // 下次拉取消息的偏移量
     private long nextBeginOffset;
     private long minOffset;
+    // 队列最大偏移量
     private long maxOffset;
 
     private int bufferTotalSize = 0;

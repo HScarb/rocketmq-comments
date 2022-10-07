@@ -173,6 +173,13 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * 提交 POP 消费任务给消费线程池
+     *
+     * @param msgs
+     * @param processQueue
+     * @param messageQueue
+     */
     @Override
     public void submitPopConsumeRequest(
         final List<MessageExt> msgs,
@@ -180,6 +187,7 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
         final MessageQueue messageQueue) {
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
         if (msgs.size() <= consumeBatchSize) {
+            // 拉取到的消息数量小于一批消息的数量，全部包装成一个消费任务，提交
             ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
             try {
                 this.consumeExecutor.submit(consumeRequest);
@@ -187,6 +195,7 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
                 this.submitConsumeRequestLater(consumeRequest);
             }
         } else {
+            // 分批提交消费任务
             for (int total = 0; total < msgs.size(); ) {
                 List<MessageExt> msgThis = new ArrayList<>(consumeBatchSize);
                 for (int i = 0; i < consumeBatchSize; i++, total++) {

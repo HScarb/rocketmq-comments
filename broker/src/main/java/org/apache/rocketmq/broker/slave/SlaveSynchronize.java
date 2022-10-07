@@ -183,6 +183,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步消息拉取模式
+     */
     private void syncMessageRequestMode() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null  && !masterAddrBak.equals(brokerController.getBrokerAddr())) {

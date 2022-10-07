@@ -404,6 +404,12 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         return this.defaultMQPullConsumerImpl.fetchConsumeOffset(queueWithNamespace(mq), fromStore);
     }
 
+    /**
+     * 获取负载的队列
+     * @param topic message topic
+     * @return
+     * @throws MQClientException
+     */
     @Override
     public Set<MessageQueue> fetchMessageQueuesInBalance(String topic) throws MQClientException {
         return this.defaultMQPullConsumerImpl.fetchMessageQueuesInBalance(withNamespace(topic));

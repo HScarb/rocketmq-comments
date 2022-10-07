@@ -50,6 +50,9 @@ import org.apache.rocketmq.remoting.protocol.body.QueryAssignmentResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.SetMessageRequestModeRequestBody;
 import org.apache.rocketmq.remoting.protocol.heartbeat.MessageModel;
 
+/**
+ * Pop 消费用的请求处理器，处理如下请求：查询 Broker 端重平衡状态、切换 Pop 消费模式
+ */
 public class QueryAssignmentProcessor implements NettyRequestProcessor {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
@@ -93,10 +96,11 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
     }
 
     /**
-     *
+     * 处理客户端发来的查询 Broker 端重平衡负载请求
      */
     private RemotingCommand queryAssignment(ChannelHandlerContext ctx, RemotingCommand request)
         throws RemotingCommandException {
+        // 解码请求体
         final QueryAssignmentRequestBody requestBody = QueryAssignmentRequestBody.decode(request.getBody(), QueryAssignmentRequestBody.class);
         final String topic = requestBody.getTopic();
         final String consumerGroup = requestBody.getConsumerGroup();
@@ -104,12 +108,15 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
         final MessageModel messageModel = requestBody.getMessageModel();
         final String strategyName = requestBody.getStrategyName();
 
+        // 构造返回体
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final QueryAssignmentResponseBody responseBody = new QueryAssignmentResponseBody();
 
+        // 尝试从缓存中获取消费者拉取模式
         SetMessageRequestModeRequestBody setMessageRequestModeRequestBody = this.messageRequestModeManager.getMessageRequestMode(topic, consumerGroup);
 
         if (setMessageRequestModeRequestBody == null) {
+            // 如果缓存中没有，新建一个拉取模式对象，并根据 Broker 端默认配置设置拉取模式
             setMessageRequestModeRequestBody = new SetMessageRequestModeRequestBody();
             setMessageRequestModeRequestBody.setTopic(topic);
             setMessageRequestModeRequestBody.setConsumerGroup(consumerGroup);
@@ -118,6 +125,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
                 // retry topic must be pull mode
                 setMessageRequestModeRequestBody.setMode(MessageRequestMode.PULL);
             } else {
+                // 根据 Broker 端默认配置设置拉取模式
                 setMessageRequestModeRequestBody.setMode(brokerController.getBrokerConfig().getDefaultMessageRequestMode());
             }
 
@@ -126,6 +134,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
             }
         }
 
+        // 触发 Broker 端重平衡
         Set<MessageQueue> messageQueues = doLoadBalance(topic, consumerGroup, clientId, messageModel, strategyName, setMessageRequestModeRequestBody, ctx);
 
         Set<MessageQueueAssignment> assignments = null;
@@ -149,6 +158,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
     }
 
     /**
+     * Broker 端重平衡
      * Returns empty set means the client should clear all load assigned to it before, null means invalid result and the
      * client should skip the update logic
      *
@@ -156,7 +166,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
      * @param consumerGroup
      * @param clientId
      * @param messageModel
-     * @param strategyName
+     * @param strategyName 重平衡策略名
      * @return the MessageQueues assigned to this client
      */
     private Set<MessageQueue> doLoadBalance(final String topic, final String consumerGroup, final String clientId,
@@ -167,6 +177,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
 
         switch (messageModel) {
             case BROADCASTING: {
+                // 广播模式，返回该 Topic 下所有队列
                 assignedQueueSet = topicRouteInfoManager.getTopicSubscribeInfo(topic);
                 if (assignedQueueSet == null) {
                     log.warn("QueryLoad: no assignment for group[{}], the topic[{}] does not exist.", consumerGroup, topic);
@@ -174,6 +185,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
                 break;
             }
             case CLUSTERING: {
+                // 集群模式，获取 Topic 下所有队列
                 Set<MessageQueue> mqSet = topicRouteInfoManager.getTopicSubscribeInfo(topic);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -187,6 +199,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
                 }
 
                 List<String> cidAll = null;
+                // 获取发起请求的消费组信息
                 ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager().getConsumerGroupInfo(consumerGroup);
                 if (consumerGroupInfo != null) {
                     cidAll = consumerGroupInfo.getAllClientId();
@@ -198,11 +211,13 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
 
                 List<MessageQueue> mqAll = new ArrayList<>();
                 mqAll.addAll(mqSet);
+                // 将队列和消费者客户端ID 排序
                 Collections.sort(mqAll);
                 Collections.sort(cidAll);
                 List<MessageQueue> allocateResult = null;
 
                 try {
+                    // 根据重平衡策略名称获取策略
                     AllocateMessageQueueStrategy allocateMessageQueueStrategy = name2LoadStrategy.get(strategyName);
                     if (null == allocateMessageQueueStrategy) {
                         log.warn("QueryLoad: unsupported strategy [{}],  {}", strategyName, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
@@ -210,10 +225,12 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
                     }
 
                     if (setMessageRequestModeRequestBody != null && setMessageRequestModeRequestBody.getMode() == MessageRequestMode.POP) {
+                        // POP 模式重平衡
                         allocateResult = allocate4Pop(allocateMessageQueueStrategy, consumerGroup, clientId, mqAll,
                             cidAll, setMessageRequestModeRequestBody.getPopShareQueueNum());
 
                     } else {
+                        // 普通重平衡
                         allocateResult = allocateMessageQueueStrategy.allocate(consumerGroup, clientId, mqAll, cidAll);
                     }
                 } catch (Throwable e) {
@@ -233,12 +250,24 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
         return assignedQueueSet;
     }
 
+    /**
+     * POP 模式重平衡
+     *
+     * @param allocateMessageQueueStrategy 重平衡策略
+     * @param consumerGroup 消费组
+     * @param clientId 消费组客户端 ID
+     * @param mqAll 全部消息队列
+     * @param cidAll 全部客户端ID
+     * @param popShareQueueNum 允许几个消费者共同消费同一队列，0 表示无限
+     * @return 该消费者负载的队列列表
+     */
     public List<MessageQueue> allocate4Pop(AllocateMessageQueueStrategy allocateMessageQueueStrategy,
         final String consumerGroup, final String clientId, List<MessageQueue> mqAll, List<String> cidAll,
         int popShareQueueNum) {
 
         List<MessageQueue> allocateResult;
         if (popShareQueueNum <= 0 || popShareQueueNum >= cidAll.size() - 1) {
+            // 每个消费者能消费所有队列，返回全部队列。队列 ID 为 -1 表示 Pop 消费时消费全部队列
             //each client pop all messagequeue
             allocateResult = new ArrayList<>(mqAll.size());
             for (MessageQueue mq : mqAll) {
@@ -249,10 +278,12 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
 
         } else {
             if (cidAll.size() <= mqAll.size()) {
+                // 消费者数量小于等于队列数量，每个消费者分配 N 个队列，每个队列也会被分配给多个消费者
                 //consumer working in pop mode could share the MessageQueues assigned to the N (N = popWorkGroupSize) consumer following it in the cid list
                 allocateResult = allocateMessageQueueStrategy.allocate(consumerGroup, clientId, mqAll, cidAll);
                 int index = cidAll.indexOf(clientId);
                 if (index >= 0) {
+                    // 负载 popShareQueueNum 次，将每次负载的结果加入最终结果
                     for (int i = 1; i <= popShareQueueNum; i++) {
                         index++;
                         index = index % cidAll.size();
@@ -261,6 +292,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
                     }
                 }
             } else {
+                // 消费者数量大于队列数量，保证每个消费者都有队列消费
                 //make sure each cid is assigned
                 allocateResult = allocate(consumerGroup, clientId, mqAll, cidAll);
             }
@@ -296,6 +328,13 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
         return result;
     }
 
+    /**
+     * 设置消息拉取模式
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand setMessageRequestMode(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);

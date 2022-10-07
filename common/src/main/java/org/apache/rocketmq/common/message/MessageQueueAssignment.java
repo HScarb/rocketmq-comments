@@ -19,12 +19,17 @@ package org.apache.rocketmq.common.message;
 import java.io.Serializable;
 import java.util.Map;
 
+/**
+ * Broker 重平衡队列分配结果
+ */
 public class MessageQueueAssignment implements Serializable {
 
     private static final long serialVersionUID = 8092600270527861645L;
 
+    // 消息队列
     private MessageQueue messageQueue;
 
+    // 拉取模式：PULL/POP
     private MessageRequestMode mode = MessageRequestMode.PULL;
 
     private Map<String, String> attachments;

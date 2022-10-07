@@ -19,6 +19,14 @@ package org.apache.rocketmq.common;
 public class KeyBuilder {
     public static final int POP_ORDER_REVIVE_QUEUE = 999;
 
+    /**
+     * POP 消费重试 Topic
+     * %RETRY%{客户端ID}_{TOPIC}
+     *
+     * @param topic
+     * @param cid
+     * @return
+     */
     public static String buildPopRetryTopic(String topic, String cid) {
         return MixAll.RETRY_GROUP_TOPIC_PREFIX + cid + "_" + topic;
     }
@@ -31,6 +39,15 @@ public class KeyBuilder {
         }
     }
 
+    /**
+     * Pop 消费长轮询 Key
+     * TOPIC@GROUP@QUEUE_ID
+     *
+     * @param topic
+     * @param cid
+     * @param queueId
+     * @return
+     */
     public static String buildPollingKey(String topic, String cid, int queueId) {
         return topic + PopAckConstants.SPLIT + cid + PopAckConstants.SPLIT + queueId;
     }

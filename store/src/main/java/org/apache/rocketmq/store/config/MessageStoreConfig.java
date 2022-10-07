@@ -63,7 +63,7 @@ public class MessageStoreConfig {
 
     // TimerLog file size, default is 100M
     private int mappedFileSizeTimerLog = 100 * 1024 * 1024;
-
+    // 定时消息精度
     private int timerPrecisionMs = 1000;
 
     private int timerRollWindowSlot = 3600 * 24 * 2;

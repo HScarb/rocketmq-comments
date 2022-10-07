@@ -853,6 +853,9 @@ public class BrokerController {
         return result;
     }
 
+    /**
+     * 注册消息存储钩子
+     */
     public void registerMessageStoreHook() {
         List<PutMessageHook> putMessageHookList = messageStore.getPutMessageHookList();
 
@@ -883,6 +886,7 @@ public class BrokerController {
             }
         });
 
+        // 存储消息前，处理定时消息逻辑
         putMessageHookList.add(new PutMessageHook() {
             @Override
             public String hookName() {

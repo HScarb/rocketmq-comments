@@ -540,6 +540,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * Pop 模式拉取消息入口
+     *
+     * @param popRequest Pop 拉取请求
+     */
     void popMessage(final PopRequest popRequest) {
         final PopProcessQueue processQueue = popRequest.getPopProcessQueue();
         if (processQueue.isDropped()) {
@@ -547,6 +552,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             return;
         }
 
+        // 上次 Pop 拉取时间
         processQueue.setLastPopTimestamp(System.currentTimeMillis());
 
         try {
@@ -582,6 +588,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
         final long beginTimestamp = System.currentTimeMillis();
 
+        // 拉取成功回调
         PopCallback popCallback = new PopCallback() {
             @Override
             public void onSuccess(PopResult popResult) {
@@ -595,21 +602,25 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
                 switch (popResult.getPopStatus()) {
                     case FOUND:
+                        // 更新统计数据
                         long pullRT = System.currentTimeMillis() - beginTimestamp;
                         DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullRT(popRequest.getConsumerGroup(),
                             popRequest.getMessageQueue().getTopic(), pullRT);
                         if (popResult.getMsgFoundList() == null || popResult.getMsgFoundList().isEmpty()) {
+                            // 如果拉取到消息为空，执行下一次拉取
                             DefaultMQPushConsumerImpl.this.executePopPullRequestImmediately(popRequest);
                         } else {
                             DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullTPS(popRequest.getConsumerGroup(),
                                 popRequest.getMessageQueue().getTopic(), popResult.getMsgFoundList().size());
                             popRequest.getPopProcessQueue().incFoundMsg(popResult.getMsgFoundList().size());
 
+                            // 如果不为空，提交 POP 消费任务给消费线程池
                             DefaultMQPushConsumerImpl.this.consumeMessagePopService.submitPopConsumeRequest(
                                 popResult.getMsgFoundList(),
                                 processQueue,
                                 popRequest.getMessageQueue());
 
+                            // 执行下次拉取
                             if (DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval() > 0) {
                                 DefaultMQPushConsumerImpl.this.executePopPullRequestLater(popRequest,
                                     DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval());
@@ -648,11 +659,12 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
 
         try {
-
+            // POP 拉取后消息不可见时间，默认 60s
             long invisibleTime = this.defaultMQPushConsumer.getPopInvisibleTime();
             if (invisibleTime < MIN_POP_INVISIBLE_TIME || invisibleTime > MAX_POP_INVISIBLE_TIME) {
                 invisibleTime = 60000;
             }
+            // 异步拉取消息
             this.pullAPIWrapper.popAsync(popRequest.getMessageQueue(), invisibleTime, this.defaultMQPushConsumer.getPopBatchNums(),
                 popRequest.getConsumerGroup(), BROKER_SUSPEND_MAX_TIME_MILLIS, popCallback, true, popRequest.getInitMode(),
                 false, subscriptionData.getExpressionType(), subscriptionData.getSubString());

@@ -282,20 +282,27 @@ public class RebalancePushImpl extends RebalanceImpl {
     }
 
     /**
-     * 分发多个 MessageQueue 的拉取请求到消息拉取服务，开始拉取
+     * 获取 Pop 模式拉取位点，从头或者从最大位移处开始
      *
-     * @param pullRequestList
+     * @return 拉取位点模式
      */
     @Override
     public int getConsumeInitMode() {
         final ConsumeFromWhere consumeFromWhere = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getConsumeFromWhere();
         if (ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET == consumeFromWhere) {
+            // 从头开始
             return ConsumeInitMode.MIN;
         } else {
+            // 从最大位移处开始
             return ConsumeInitMode.MAX;
         }
     }
 
+    /**
+     * 分发多个 MessageQueue 的拉取请求到消息拉取服务，开始拉取
+     *
+     * @param pullRequestList
+     */
     @Override
     public void dispatchPullRequest(final List<PullRequest> pullRequestList, final long delay) {
         for (PullRequest pullRequest : pullRequestList) {
@@ -307,6 +314,12 @@ public class RebalancePushImpl extends RebalanceImpl {
         }
     }
 
+    /**
+     * 将 Pop 模式拉取请求提交到拉取服务
+     *
+     * @param pullRequestList
+     * @param delay
+     */
     @Override
     public void dispatchPopPullRequest(final List<PopRequest> pullRequestList, final long delay) {
         for (PopRequest pullRequest : pullRequestList) {

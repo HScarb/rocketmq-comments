@@ -71,7 +71,13 @@ public abstract class RebalanceImpl {
     private static final int TIMEOUT_CHECK_TIMES = 3;
     private static final int QUERY_ASSIGNMENT_TIMEOUT = 3000;
 
+    /**
+     * Broker 端重平衡结果缓存
+     */
     private Map<String, String> topicBrokerRebalance = new ConcurrentHashMap<>();
+    /**
+     * Cient 端重平衡结果缓存
+     */
     private Map<String, String> topicClientRebalance = new ConcurrentHashMap<>();
 
     public RebalanceImpl(String consumerGroup, MessageModel messageModel,
@@ -301,6 +307,9 @@ public abstract class RebalanceImpl {
         return balanced;
     }
 
+    /**
+     * 请求 Broker 获取 Broker 端重平衡结果（Pop 消费）
+     */
     private boolean tryQueryAssignment(String topic) {
         if (topicClientRebalance.containsKey(topic)) {
             return false;
@@ -431,14 +440,14 @@ public abstract class RebalanceImpl {
     }
 
     /**
-     * 获取 Broker 端重平衡结果
+     * 调用 Broker API，查询 Broker 端重平衡结果
      *
      * @param topic
-     * @param isOrder 顺序消费
-     * @return
+     * @param isOrder 是否顺序消费
+     * @return Broker 端重平衡结果与本地缓存是否一致
      */
     private boolean getRebalanceResultFromBroker(final String topic, final boolean isOrder) {
-        // Client 端重平衡策略
+        // 获取重平衡策略
         String strategyName = this.allocateMessageQueueStrategy.getName();
         Set<MessageQueueAssignment> messageQueueAssignments;
         try {
@@ -451,6 +460,7 @@ public abstract class RebalanceImpl {
         }
 
         // null means invalid result, we should skip the update logic
+        // 如果返回的分配结果为空，表示非法结果，直接跳过重平衡负载逻辑
         if (messageQueueAssignments == null) {
             return false;
         }
@@ -634,11 +644,21 @@ public abstract class RebalanceImpl {
         return changed;
     }
 
+    /**
+     * POP 模式消费，更新订阅关系
+     *
+     * @param topic
+     * @param assignments 分配到的队列
+     * @param isOrder 是否顺序消费
+     * @return
+     */
     private boolean updateMessageQueueAssignment(final String topic, final Set<MessageQueueAssignment> assignments,
         final boolean isOrder) {
         boolean changed = false;
 
+        // Push 模式订阅
         Map<MessageQueue, MessageQueueAssignment> mq2PushAssignment = new HashMap<>();
+        // POP 模式订阅
         Map<MessageQueue, MessageQueueAssignment> mq2PopAssignment = new HashMap<>();
         for (MessageQueueAssignment assignment : assignments) {
             MessageQueue messageQueue = assignment.getMessageQueue();
@@ -652,6 +672,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // 非重试 Topic，订阅模式切换
         if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
             if (mq2PopAssignment.isEmpty() && !mq2PushAssignment.isEmpty()) {
                 //pop switch to push
@@ -675,6 +696,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // Push 订阅关系移除
         {
             // drop process queues no longer belong me
             HashMap<MessageQueue, ProcessQueue> removeQueueMap = new HashMap<>(this.processQueueTable.size());
@@ -709,6 +731,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // Pop 订阅关系移除
         {
             HashMap<MessageQueue, PopProcessQueue> removeQueueMap = new HashMap<>(this.popProcessQueueTable.size());
             Iterator<Entry<MessageQueue, PopProcessQueue>> it = this.popProcessQueueTable.entrySet().iterator();
@@ -743,6 +766,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // Push 订阅关系新增
         {
             // add new message queue
             // 遍历新分配的 MessageQueue，对于新分配的，创建 PullRequest 启动拉取
@@ -803,6 +827,7 @@ public abstract class RebalanceImpl {
             this.dispatchPullRequest(pullRequestList, 500);
         }
 
+        // Pop 订阅关系新增
         {
             // add new message queue
             List<PopRequest> popRequestList = new ArrayList<>();
@@ -825,7 +850,7 @@ public abstract class RebalanceImpl {
                     }
                 }
             }
-
+            // 将 Pop 模式拉取请求提交到消息拉取服务
             this.dispatchPopPullRequest(popRequestList, 500);
         }
 
