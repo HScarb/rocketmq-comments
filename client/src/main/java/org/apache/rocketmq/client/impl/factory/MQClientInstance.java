@@ -127,6 +127,10 @@ public class MQClientInstance {
      * 从NameServer更新
      */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<>();
+
+    /**
+     * Topic 队列的 broker 映射关系，用于逻辑队列查找 broker
+     */
     private final ConcurrentMap<String/* Topic */, ConcurrentMap<MessageQueue, String/*brokerName*/>> topicEndPointsTable = new ConcurrentHashMap<>();
     private final Lock lockNamesrv = new ReentrantLock();
     private final Lock lockHeartbeat = new ReentrantLock();

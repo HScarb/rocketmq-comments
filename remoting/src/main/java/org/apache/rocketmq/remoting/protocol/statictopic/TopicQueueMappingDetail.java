@@ -23,8 +23,14 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 
+/**
+ * 逻辑队列到物理队列的映射关系
+ */
 public class TopicQueueMappingDetail extends TopicQueueMappingInfo {
 
+    /**
+     * 当前 Broker 拥有的所有逻辑队列，key: 逻辑队列数量
+     */
     // the mapping info in current broker, do not register to nameserver
     // make sure this value is not null
     private ConcurrentMap<Integer/*global id*/, List<LogicQueueMappingItem>> hostedQueues = new ConcurrentHashMap<>();

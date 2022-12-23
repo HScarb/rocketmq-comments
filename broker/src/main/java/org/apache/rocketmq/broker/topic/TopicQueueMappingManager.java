@@ -42,6 +42,9 @@ import org.apache.rocketmq.remoting.rpc.TopicRequestHeader;
 
 import static org.apache.rocketmq.remoting.protocol.RemotingCommand.buildErrorResponse;
 
+/**
+ * Topic 逻辑队列映射管理器
+ */
 public class TopicQueueMappingManager extends ConfigManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final long LOCK_TIMEOUT_MILLIS = 3000;
@@ -51,6 +54,9 @@ public class TopicQueueMappingManager extends ConfigManager {
     private final DataVersion dataVersion = new DataVersion();
     private transient BrokerController brokerController;
 
+    /**
+     * Topic 逻辑队列映射表，key: Topic，value: 映射关系
+     */
     private final ConcurrentMap<String, TopicQueueMappingDetail> topicQueueMappingTable = new ConcurrentHashMap<>();
 
 
@@ -58,6 +64,15 @@ public class TopicQueueMappingManager extends ConfigManager {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 更新逻辑队列映射关系
+     *
+     * @param newDetail 新映射关系
+     * @param force 是否强制覆盖
+     * @param isClean
+     * @param flush
+     * @throws Exception
+     */
     public void updateTopicQueueMapping(TopicQueueMappingDetail newDetail, boolean force, boolean isClean, boolean flush) throws Exception {
         boolean locked = false;
         boolean updated = false;
@@ -186,6 +201,13 @@ public class TopicQueueMappingManager extends ConfigManager {
         return buildTopicQueueMappingContext(requestHeader, false);
     }
 
+    /**
+     * 构建静态主题和逻辑队列的映射关系数据结构
+     *
+     * @param requestHeader
+     * @param selectOneWhenMiss
+     * @return
+     */
     //Do not return a null context
     public TopicQueueMappingContext buildTopicQueueMappingContext(TopicRequestHeader requestHeader, boolean selectOneWhenMiss) {
         // if lo is set to false explicitly, it maybe the forwarded request
@@ -199,6 +221,7 @@ public class TopicQueueMappingManager extends ConfigManager {
             globalId = ((TopicQueueRequestHeader) requestHeader).getQueueId();
         }
 
+        // 从缓存中获取 Topic 映射关系
         TopicQueueMappingDetail mappingDetail = getTopicQueueMapping(topic);
         if (mappingDetail == null) {
             //it is not static topic

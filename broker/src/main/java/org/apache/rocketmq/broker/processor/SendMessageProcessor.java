@@ -470,6 +470,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             responseHeader.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());
             responseHeader.setTransactionId(MessageClientIDSetter.getUniqID(msg));
 
+            // 为静态主题计算返回结果
             RemotingCommand rewriteResult = rewriteResponseForStaticTopic(responseHeader, mappingContext);
             if (rewriteResult != null) {
                 return rewriteResult;

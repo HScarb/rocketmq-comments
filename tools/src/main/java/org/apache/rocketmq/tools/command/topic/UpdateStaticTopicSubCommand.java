@@ -39,6 +39,9 @@ import org.apache.rocketmq.tools.admin.MQAdminUtils;
 import org.apache.rocketmq.tools.command.SubCommand;
 import org.apache.rocketmq.tools.command.SubCommandException;
 
+/**
+ * 创建静态队列
+ */
 public class UpdateStaticTopicSubCommand implements SubCommand {
 
     @Override

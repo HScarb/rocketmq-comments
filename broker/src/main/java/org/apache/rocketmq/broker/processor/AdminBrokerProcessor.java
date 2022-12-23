@@ -455,6 +455,14 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 创建静态主题和逻辑队列
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private synchronized RemotingCommand updateAndCreateStaticTopic(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -497,6 +505,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             // 将 Topic 配置更新，并将元数据版本号 + 1，然后持久化元数据
             this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
+            // 更新逻辑队列映射关系
             this.brokerController.getTopicQueueMappingManager().updateTopicQueueMapping(topicQueueMappingDetail, force, false, true);
 
             // 增量更新元数据信息到 Nameserver

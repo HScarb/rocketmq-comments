@@ -373,6 +373,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
 
         TopicQueueMappingContext mappingContext = this.brokerController.getTopicQueueMappingManager().buildTopicQueueMappingContext(requestHeader, false);
 
+        // 静态主题拉取消息结果转换
         {
             RemotingCommand rewriteResult = rewriteRequestForStaticTopic(requestHeader, mappingContext);
             if (rewriteResult != null) {
