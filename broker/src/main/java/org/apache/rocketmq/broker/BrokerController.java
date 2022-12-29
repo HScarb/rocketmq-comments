@@ -219,8 +219,16 @@ public class BrokerController {
     protected final List<SendMessageHook> sendMessageHookList = new ArrayList<>();
     protected final List<ConsumeMessageHook> consumeMessageHookList = new ArrayList<>();
     protected MessageStore messageStore;
+    /**
+     * 可以处理所有客户端请求，拉取请求默认由 remotingServer 处理
+     * 监听端口 listenPort，默认为 10911
+     */
     protected RemotingServer remotingServer;
     protected CountDownLatch remotingServerStartLatch;
+    /**
+     * 处理除了拉取请求以外的请求，生产请求默认由 fastRemotingServer 处理
+     * 监听端口 listenrPort - 2，默认为 10909
+     */
     protected RemotingServer fastRemotingServer;
     protected TopicConfigManager topicConfigManager;
     protected SubscriptionGroupManager subscriptionGroupManager;
@@ -425,6 +433,9 @@ public class BrokerController {
         return brokerMetricsManager;
     }
 
+    /**
+     * 服务端初始化
+     */
     protected void initializeRemotingServer() throws CloneNotSupportedException {
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);
         NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();

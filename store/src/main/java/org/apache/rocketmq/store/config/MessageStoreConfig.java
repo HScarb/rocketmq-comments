@@ -238,7 +238,13 @@ public class MessageStoreConfig {
 
     private boolean enableScheduleMessageStats = true;
 
+    /**
+     * 是否启用轻量级队列
+     */
     private boolean enableLmq = false;
+    /**
+     * 是否允许消息分发到多个轻量级队列（分发到消费索引）
+     */
     private boolean enableMultiDispatch = false;
     private int maxLmqConsumeQueueNum = 20000;
 

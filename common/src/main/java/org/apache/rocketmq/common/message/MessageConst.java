@@ -63,6 +63,9 @@ public class MessageConst {
     public static final String PROPERTY_SHARDING_KEY = "__SHARDINGKEY";
     public static final String PROPERTY_FORWARD_QUEUE_ID = "PROPERTY_FORWARD_QUEUE_ID";
     public static final String PROPERTY_REDIRECT = "REDIRECT";
+    /**
+     * Light message Queue 消息属性，分发到多个轻量级队列
+     */
     public static final String PROPERTY_INNER_MULTI_DISPATCH = "INNER_MULTI_DISPATCH";
     public static final String PROPERTY_INNER_MULTI_QUEUE_OFFSET = "INNER_MULTI_QUEUE_OFFSET";
     public static final String PROPERTY_TRACE_CONTEXT = "TRACE_CONTEXT";

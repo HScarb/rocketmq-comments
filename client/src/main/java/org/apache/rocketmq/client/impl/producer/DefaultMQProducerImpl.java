@@ -831,6 +831,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         SendMessageContext context = null;
         // 找到 topic 的路由信息
         if (brokerAddr != null) {
+            // 根据是否开启 VIP 通道来获取请求的 Broker 地址
             brokerAddr = MixAll.brokerVIPChannel(this.defaultMQProducer.isSendMessageWithVIPChannel(), brokerAddr);
 
             byte[] prevBody = msg.getBody();

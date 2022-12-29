@@ -36,6 +36,9 @@ import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.command.SubCommand;
 import org.apache.rocketmq.tools.command.SubCommandException;
 
+/**
+ * 根据消息 ID 查找消息轨迹（消息轨迹消息的 KEY 为源消息 ID）
+ */
 public class QueryMsgTraceByIdSubCommand implements SubCommand {
 
     @Override
@@ -71,6 +74,7 @@ public class QueryMsgTraceByIdSubCommand implements SubCommand {
         defaultMQAdminExt.setInstanceName(Long.toString(System.currentTimeMillis()));
         try {
             final String msgId = commandLine.getOptionValue('i').trim();
+            // 消息轨迹 Topic，默认为 RMQ_SYS_TRACE_TOPIC
             String traceTopic = TopicValidator.RMQ_SYS_TRACE_TOPIC;
             if (commandLine.hasOption('t')) {
                 traceTopic = commandLine.getOptionValue('t').trim();

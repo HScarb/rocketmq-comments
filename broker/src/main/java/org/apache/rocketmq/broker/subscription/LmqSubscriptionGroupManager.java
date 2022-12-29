@@ -20,6 +20,9 @@ import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 
+/**
+ * 支持轻量级队列的订阅管理器
+ */
 public class LmqSubscriptionGroupManager extends SubscriptionGroupManager {
 
     public LmqSubscriptionGroupManager(BrokerController brokerController) {

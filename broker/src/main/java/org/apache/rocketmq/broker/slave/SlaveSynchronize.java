@@ -111,10 +111,13 @@ public class SlaveSynchronize {
      */
     private void syncConsumerOffset() {
         String masterAddrBak = this.masterAddr;
+        // 从节点主动请求主节点，拉取信息并保存到本地
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
             try {
+                // 调用主节点 API，查询消费进度
                 ConsumerOffsetSerializeWrapper offsetWrapper =
                     this.brokerController.getBrokerOuterAPI().getAllConsumerOffset(masterAddrBak);
+                // 将消费进度保存到本地
                 this.brokerController.getConsumerOffsetManager().getOffsetTable()
                     .putAll(offsetWrapper.getOffsetTable());
                 this.brokerController.getConsumerOffsetManager().getDataVersion().assignNewOne(offsetWrapper.getDataVersion());

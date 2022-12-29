@@ -134,6 +134,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     }
 
     /**
+     * 如果是静态主题，将物理队列偏移量转换成逻辑队列的偏移量
      * If the response is not null, it meets some errors
      *
      * @return

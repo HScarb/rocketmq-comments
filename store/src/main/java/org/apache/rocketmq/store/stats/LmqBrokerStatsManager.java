@@ -18,6 +18,9 @@ package org.apache.rocketmq.store.stats;
 
 import org.apache.rocketmq.common.MixAll;
 
+/**
+ * 轻量级队列统计数据管理
+ */
 public class LmqBrokerStatsManager extends BrokerStatsManager {
 
     public LmqBrokerStatsManager(String clusterName, boolean enableQueueStat) {

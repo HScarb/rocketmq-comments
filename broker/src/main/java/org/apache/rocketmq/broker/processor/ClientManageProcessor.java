@@ -107,10 +107,12 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 }
             }
 
+            // 查询消费组订阅关系
             SubscriptionGroupConfig subscriptionGroupConfig =
                 this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(
                     consumerData.getGroupName());
             boolean isNotifyConsumerIdsChangedEnable = true;
+            // 如果不存在（新消费组上线），为其创建重试 Topic
             if (null != subscriptionGroupConfig) {
                 isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
                 int topicSysFlag = 0;

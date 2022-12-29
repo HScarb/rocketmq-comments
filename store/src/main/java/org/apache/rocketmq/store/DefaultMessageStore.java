@@ -1319,6 +1319,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
+<<<<<<< HEAD
      * Lazy clean queue offset table.
      * If offset table is cleaned, and old messages are dispatching after the old consume queue is cleaned,
      * consume queue will be created with old offset, then later message with new offset table can not be
@@ -1328,6 +1329,41 @@ public class DefaultMessageStore implements MessageStore {
     public int deleteTopics(final Set<String> deleteTopics) {
         if (deleteTopics == null || deleteTopics.isEmpty()) {
             return 0;
+=======
+     * 清理未使用的 Topic
+     *
+     * @param topics all valid topics. 使用中的 Topic
+     * @return
+     */
+    @Override
+    public int cleanUnusedTopic(Set<String> topics) {
+        Iterator<Entry<String, ConcurrentMap<Integer, ConsumeQueueInterface>>> it = this.getConsumeQueueTable().entrySet().iterator();
+        // 遍历 Topic
+        while (it.hasNext()) {
+            Entry<String, ConcurrentMap<Integer, ConsumeQueueInterface>> next = it.next();
+            String topic = next.getKey();
+
+            if (!topics.contains(topic) && !TopicValidator.isSystemTopic(topic) && !MixAll.isLmq(topic)) {
+                // 删除 Topic 下的队列
+                ConcurrentMap<Integer, ConsumeQueueInterface> queueTable = next.getValue();
+                for (ConsumeQueueInterface cq : queueTable.values()) {
+                    this.consumeQueueStore.destroy(cq);
+                    LOGGER.info("cleanUnusedTopic: {} {} ConsumeQueue cleaned",
+                        cq.getTopic(),
+                        cq.getQueueId()
+                    );
+
+                    this.consumeQueueStore.removeTopicQueueTable(cq.getTopic(), cq.getQueueId());
+                }
+                it.remove();
+
+                if (this.brokerConfig.isAutoDeleteUnusedStats()) {
+                    this.brokerStatsManager.onTopicDeleted(topic);
+                }
+
+                LOGGER.info("cleanUnusedTopic: {},topic destroyed", topic);
+            }
+>>>>>>> e289f1c06 (Update LMQ)
         }
 
         int deleteCount = 0;
@@ -1386,6 +1422,9 @@ public class DefaultMessageStore implements MessageStore {
         return deleteCount;
     }
 
+    /**
+     * 清理过期队列
+     */
     @Override
     public void cleanExpiredConsumerQueue() {
         long minCommitLogOffset = this.commitLog.getMinOffset();

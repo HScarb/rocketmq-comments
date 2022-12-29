@@ -439,6 +439,15 @@ public class TopicQueueMappingUtils {
         }
     }
 
+    /**
+     * 为静态队列创建映射关系
+     *
+     * @param topic
+     * @param queueNum 队列数量
+     * @param targetBrokers
+     * @param brokerConfigMap
+     * @return
+     */
     public static TopicRemappingDetailWrapper createTopicConfigMapping(String topic, int queueNum, Set<String> targetBrokers, Map<String, TopicConfigAndQueueMapping> brokerConfigMap) {
         checkTargetBrokersComplete(targetBrokers, brokerConfigMap);
         Map<Integer, TopicQueueMappingOne> globalIdMap = new HashMap<>();

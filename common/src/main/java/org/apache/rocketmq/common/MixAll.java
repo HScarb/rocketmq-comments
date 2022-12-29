@@ -94,7 +94,13 @@ public class MixAll {
     public static final String CID_SYS_RMQ_TRANS = "CID_RMQ_SYS_TRANS";
     public static final String ACL_CONF_TOOLS_FILE = "/conf/tools.yml";
     public static final String REPLY_MESSAGE_FLAG = "reply";
+    /**
+     * Light message queue 轻量级队列前缀
+     */
     public static final String LMQ_PREFIX = "%LMQ%";
+    /**
+     * 分发到多个轻量级队列的分隔符
+     */
     public static final String MULTI_DISPATCH_QUEUE_SPLITTER = ",";
     public static final String REQ_T = "ReqT";
     public static final String ROCKETMQ_ZONE_ENV = "ROCKETMQ_ZONE";

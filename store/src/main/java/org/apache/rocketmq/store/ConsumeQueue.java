@@ -629,6 +629,12 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         this.messageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * 判断消息是否需要执行多队列分发
+     *
+     * @param dispatchRequest 投递请求
+     * @return 是否需要分发
+     */
     private boolean checkMultiDispatchQueue(DispatchRequest dispatchRequest) {
         if (!this.messageStore.getMessageStoreConfig().isEnableMultiDispatch()) {
             return false;
@@ -645,6 +651,12 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         return true;
     }
 
+    /**
+     * Light message queue 分发到多个队列
+     *
+     * @param request 分发请求
+     * @param maxRetries 最大重试次数，默认 30
+     */
     private void multiDispatchLmqQueue(DispatchRequest request, int maxRetries) {
         Map<String, String> prop = request.getPropertiesMap();
         String multiDispatchQueue = prop.get(MessageConst.PROPERTY_INNER_MULTI_DISPATCH);
@@ -659,6 +671,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
             String queueName = queues[i];
             long queueOffset = Long.parseLong(queueOffsets[i]);
             int queueId = request.getQueueId();
+            // Light message queue 在每个 broker 上只有一个 queue，queueId 为 0
             if (this.messageStore.getMessageStoreConfig().isEnableLmq() && MixAll.isLmq(queueName)) {
                 queueId = 0;
             }
@@ -668,11 +681,22 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         return;
     }
 
+    /**
+     * 分发消息到消费索引
+     *
+     * @param request
+     * @param maxRetries
+     * @param queueName
+     * @param queueOffset
+     * @param queueId
+     */
     private void doDispatchLmqQueue(DispatchRequest request, int maxRetries, String queueName, long queueOffset,
                                     int queueId) {
+        // 查找 ConsumeQueue
         ConsumeQueueInterface cq = this.messageStore.findConsumeQueue(queueName, queueId);
         boolean canWrite = this.messageStore.getRunningFlags().isCQWriteable();
         for (int i = 0; i < maxRetries && canWrite; i++) {
+            // 向 ConsumeQueue 写入索引项
             boolean result = ((ConsumeQueue) cq).putMessagePositionInfo(request.getCommitLogOffset(), request.getMsgSize(),
                     request.getTagsCode(),
                     queueOffset);
@@ -691,12 +715,20 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         }
     }
 
+    /**
+     * 查询要分发的队列的逻辑偏移量，放入消息属性
+     *
+     * @param queueOffsetAssigner the delegated queue offset assigner
+     * @param msg message itself
+     * @param messageNum message number
+     */
     @Override
     public void assignQueueOffset(QueueOffsetAssigner queueOffsetAssigner, MessageExtBrokerInner msg,
         short messageNum) {
         String topicQueueKey = getTopic() + "-" + getQueueId();
         long queueOffset = queueOffsetAssigner.assignQueueOffset(topicQueueKey, messageNum);
         msg.setQueueOffset(queueOffset);
+        // 轻量级队列分发准备，为消息添加多队列分发属性
         // For LMQ
         if (!messageStore.getMessageStoreConfig().isEnableMultiDispatch()) {
             return;
@@ -705,7 +737,9 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         if (StringUtils.isBlank(multiDispatchQueue)) {
             return;
         }
+        // 从原始消息属性中获取分发的队列列表
         String[] queues = multiDispatchQueue.split(MixAll.MULTI_DISPATCH_QUEUE_SPLITTER);
+        // 从队列偏移量表中查询当前队列偏移量
         Long[] queueOffsets = new Long[queues.length];
         for (int i = 0; i < queues.length; i++) {
             String key = queueKey(queues[i], msg);
@@ -713,11 +747,20 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 queueOffsets[i] = queueOffsetAssigner.assignLmqOffset(key, (short) 1);
             }
         }
+        // 将队列偏移量作为属性存入消息
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_INNER_MULTI_QUEUE_OFFSET,
             StringUtils.join(queueOffsets, MixAll.MULTI_DISPATCH_QUEUE_SPLITTER));
+        // 移除消息的 WAIT_STORE 属性，节省存储空间
         removeWaitStorePropertyString(msg);
     }
 
+    /**
+     * 构造队列 Key
+     *
+     * @param queueName 轻量级队列名称
+     * @param msgInner 原始消息
+     * @return "队列名称-ID"
+     */
     public String queueKey(String queueName, MessageExtBrokerInner msgInner) {
         StringBuilder keyBuilder = new StringBuilder();
         keyBuilder.append(queueName);
@@ -730,6 +773,11 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         return keyBuilder.toString();
     }
 
+    /**
+     * 移除消息的 WAIT_STORE 属性，节省空间
+     *
+     * @param msgInner
+     */
     private void removeWaitStorePropertyString(MessageExtBrokerInner msgInner) {
         if (msgInner.getProperties().containsKey(MessageConst.PROPERTY_WAIT_STORE_MSG_OK)) {
             // There is no need to store "WAIT=true", remove it from propertiesString to save 9 bytes for each message.

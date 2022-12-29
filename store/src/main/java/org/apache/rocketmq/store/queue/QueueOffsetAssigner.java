@@ -33,8 +33,17 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 public class QueueOffsetAssigner {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /**
+     * 队列当前逻辑偏移量
+     */
     private ConcurrentMap<String, Long> topicQueueTable = new ConcurrentHashMap<>(1024);
+    /**
+     * Batch消费队列当前逻辑偏移量
+     */
     private ConcurrentMap<String, Long> batchTopicQueueTable = new ConcurrentHashMap<>(1024);
+    /**
+     * 轻量级队列的消费队列当前逻辑偏移量
+     */
     private ConcurrentMap<String/* topic-queueid */, Long/* offset */> lmqTopicQueueTable = new ConcurrentHashMap<>(1024);
 
     public long assignQueueOffset(String topicQueueKey, short messageNum) {

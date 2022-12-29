@@ -141,6 +141,8 @@ public interface ConsumeQueueInterface {
 
     /**
      * Assign queue offset.
+     * 保存每个队列当前的偏移量
+     *
      * @param queueOffsetAssigner the delegated queue offset assigner
      * @param msg message itself
      * @param messageNum message number
