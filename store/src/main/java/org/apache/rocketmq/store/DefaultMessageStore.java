@@ -1052,9 +1052,16 @@ public class DefaultMessageStore implements MessageStore {
         return this.systemClock.now();
     }
 
+    /**
+     * 清理未使用的 Topic
+     *
+     * @param topics all valid topics. 使用中的 Topic
+     * @return
+     */
     @Override
     public int cleanUnusedTopic(Set<String> topics) {
         Iterator<Entry<String, ConcurrentMap<Integer, ConsumeQueue>>> it = this.consumeQueueTable.entrySet().iterator();
+        // 遍历 Topic
         while (it.hasNext()) {
             Entry<String, ConcurrentMap<Integer, ConsumeQueue>> next = it.next();
             String topic = next.getKey();
@@ -1062,6 +1069,7 @@ public class DefaultMessageStore implements MessageStore {
             if (!topics.contains(topic) && !topic.equals(TopicValidator.RMQ_SYS_SCHEDULE_TOPIC)
                     && !topic.equals(TopicValidator.RMQ_SYS_TRANS_OP_HALF_TOPIC)
                     && !MixAll.isLmq(topic)) {
+                // 删除 Topic 下的队列
                 ConcurrentMap<Integer, ConsumeQueue> queueTable = next.getValue();
                 for (ConsumeQueue cq : queueTable.values()) {
                     cq.destroy();

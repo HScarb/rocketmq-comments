@@ -68,7 +68,13 @@ public class CommitLog {
 
     private final AppendMessageCallback appendMessageCallback;
     private final ThreadLocal<PutMessageThreadLocal> putMessageThreadLocal;
+    /**
+     * 队列当前逻辑偏移量表
+     */
     protected HashMap<String/* topic-queueid */, Long/* offset */> topicQueueTable = new HashMap<String, Long>(1024);
+    /**
+     *  轻量级队列当前物理偏移量表
+     */
     protected Map<String/* topic-queueid */, Long/* offset */> lmqTopicQueueTable = new ConcurrentHashMap<>(1024);
     protected volatile long confirmOffset = -1L;
 

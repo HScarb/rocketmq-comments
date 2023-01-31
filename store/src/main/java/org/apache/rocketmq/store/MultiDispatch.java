@@ -43,6 +43,12 @@ public class MultiDispatch {
         isDLedger = commitLog instanceof DLedgerCommitLog;
     }
 
+    /**
+     * 消息是否需要多队列分发
+     *
+     * @param msg
+     * @return
+     */
     public boolean isMultiDispatchMsg(MessageExtBrokerInner msg) {
         if (!messageStore.getMessageStoreConfig().isEnableMultiDispatch()) {
             return false;
@@ -53,6 +59,13 @@ public class MultiDispatch {
         return true;
     }
 
+    /**
+     * 构造队列 Key
+     *
+     * @param queueName 轻量级队列名称
+     * @param msgInner 原始消息
+     * @return "队列名称-ID"
+     */
     public String queueKey(String queueName, MessageExtBrokerInner msgInner) {
         keyBuilder.setLength(0);
         keyBuilder.append(queueName);
@@ -65,6 +78,12 @@ public class MultiDispatch {
         return keyBuilder.toString();
     }
 
+    /**
+     * 为消息添加多队列分发属性
+     *
+     * @param msgInner
+     * @return
+     */
     public boolean wrapMultiDispatch(final MessageExtBrokerInner msgInner) {
         if (!messageStore.getMessageStoreConfig().isEnableMultiDispatch()) {
             return true;
@@ -73,7 +92,9 @@ public class MultiDispatch {
         if (StringUtils.isBlank(multiDispatchQueue)) {
             return true;
         }
+        // 从原始消息属性中获取分发的队列列表
         String[] queues = multiDispatchQueue.split(MixAll.MULTI_DISPATCH_QUEUE_SPLITTER);
+        // 从队列偏移量表中查询队列当前偏移量
         Long[] queueOffsets = new Long[queues.length];
         for (int i = 0; i < queues.length; i++) {
             String key = queueKey(queues[i], msgInner);
@@ -93,8 +114,10 @@ public class MultiDispatch {
             }
             queueOffsets[i] = queueOffset;
         }
+        // 将队列偏移量作为属性存入消息
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_INNER_MULTI_QUEUE_OFFSET,
             StringUtils.join(queueOffsets, MixAll.MULTI_DISPATCH_QUEUE_SPLITTER));
+        // 移除消息的 WAIT_STORE 属性，节省存储空间
         removeWaitStorePropertyString(msgInner);
         if (isDLedger) {
             return true;
@@ -103,6 +126,11 @@ public class MultiDispatch {
         }
     }
 
+    /**
+     * 移除消息的 WAIT_STORE 属性，节省空间
+     *
+     * @param msgInner
+     */
     private void removeWaitStorePropertyString(MessageExtBrokerInner msgInner) {
         if (msgInner.getProperties().containsKey(MessageConst.PROPERTY_WAIT_STORE_MSG_OK)) {
             // There is no need to store "WAIT=true", remove it from propertiesString to save 9 bytes for each message.
@@ -138,6 +166,11 @@ public class MultiDispatch {
 
     }
 
+    /**
+     * 事务消息确认后更新队列偏移量
+     *
+     * @param msgInner
+     */
     public void updateMultiQueueOffset(final MessageExtBrokerInner msgInner) {
         if (!messageStore.getMessageStoreConfig().isEnableMultiDispatch()) {
             return;
@@ -168,6 +201,13 @@ public class MultiDispatch {
         }
     }
 
+    /**
+     * 获取队列当前的逻辑偏移量
+     *
+     * @param key topic-queue
+     * @return
+     * @throws Exception
+     */
     private Long getTopicQueueOffset(String key) throws Exception {
         Long offset = null;
         if (messageStore.getMessageStoreConfig().isEnableLmq() && MixAll.isLmq(key)) {

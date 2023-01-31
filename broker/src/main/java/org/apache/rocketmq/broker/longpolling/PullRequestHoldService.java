@@ -42,7 +42,7 @@ public class PullRequestHoldService extends ServiceThread {
     protected final BrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
     // 消息拉取请求容器
-    private ConcurrentMap<String/* topic@queueId */, ManyPullRequest/* 同一队列积累的拉取请求 */> pullRequestTable =
+    protected ConcurrentMap<String/* topic@queueId */, ManyPullRequest/* 同一队列积累的拉取请求 */> pullRequestTable =
         new ConcurrentHashMap<String, ManyPullRequest>(1024);
 
     public PullRequestHoldService(final BrokerController brokerController) {

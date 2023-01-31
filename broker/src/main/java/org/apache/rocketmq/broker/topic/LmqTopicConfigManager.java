@@ -21,6 +21,9 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.constant.PermName;
 
+/**
+ * 支持轻量级队列的 Topic 管理器
+ */
 public class LmqTopicConfigManager extends TopicConfigManager {
     public LmqTopicConfigManager(BrokerController brokerController) {
         super(brokerController);
@@ -34,6 +37,11 @@ public class LmqTopicConfigManager extends TopicConfigManager {
         return super.selectTopicConfig(topic);
     }
 
+    /**
+     * 轻量级队列不会更新配置信息
+     *
+     * @param topicConfig
+     */
     @Override
     public void updateTopicConfig(final TopicConfig topicConfig) {
         if (topicConfig == null || MixAll.isLmq(topicConfig.getTopicName())) {
@@ -42,6 +50,12 @@ public class LmqTopicConfigManager extends TopicConfigManager {
         super.updateTopicConfig(topicConfig);
     }
 
+    /**
+     * 轻量级队列 Topic 配置，其只有一个队列
+     *
+     * @param topic
+     * @return
+     */
     private TopicConfig simpleLmqTopicConfig(String topic) {
         return new TopicConfig(topic, 1, 1, PermName.PERM_READ | PermName.PERM_WRITE);
     }

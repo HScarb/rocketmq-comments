@@ -22,7 +22,9 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
-
+/**
+ * 支持轻量级队列的长轮询请求管理器
+ */
 public class LmqPullRequestHoldService extends PullRequestHoldService {
     private static final InternalLogger LOGGER = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
@@ -35,6 +37,10 @@ public class LmqPullRequestHoldService extends PullRequestHoldService {
         return LmqPullRequestHoldService.class.getSimpleName();
     }
 
+    /**
+     * 检查所有已经挂起的长轮询请求
+     * 如果有数据满足要求，就触发请求再次执行
+     */
     @Override
     public void checkHoldRequest() {
         for (String key : pullRequestTable.keySet()) {
