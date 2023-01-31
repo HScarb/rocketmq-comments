@@ -162,8 +162,14 @@ public class MixAll {
         return DLQ_GROUP_TOPIC_PREFIX + consumerGroup;
     }
 
+    /**
+     * 获取 Broker 地址
+     * @param isChange 是否开启 VIP 通道
+     * @param brokerAddr broker remotingServer 地址
+     */
     public static String brokerVIPChannel(final boolean isChange, final String brokerAddr) {
         if (isChange) {
+            // 如果开启了 VIP 通道，则需要请求到 Broker 端的 fastRemotingServer，将端口号 - 2
             int split = brokerAddr.lastIndexOf(":");
             String ip = brokerAddr.substring(0, split);
             String port = brokerAddr.substring(split + 1);
@@ -187,6 +193,9 @@ public class MixAll {
         return 0;
     }
 
+    /**
+     * 配置文件的内容持久化到磁盘文件
+     */
     public static synchronized void string2File(final String str, final String fileName) throws IOException {
 
         String bakFile = fileName + ".bak";
