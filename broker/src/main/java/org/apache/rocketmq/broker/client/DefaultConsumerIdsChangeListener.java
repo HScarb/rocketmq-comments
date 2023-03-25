@@ -63,6 +63,13 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
         }, 30, 15, TimeUnit.SECONDS);
     }
 
+    /**
+     * 处理消费者 Id 变化事件
+     *
+     * @param event 事件类型
+     * @param group 消费组名称
+     * @param args 事件参数，事件为 {@link ConsumerGroupEvent#CHANGE} 时为 {@link List<Channel>}，表示消费组中所有消费者的 Channel；事件为 {@link ConsumerGroupEvent#REGISTER} 时为 {@link Collection<SubscriptionData>}，表示消费组中所有订阅信息
+     */
     @Override
     public void handle(ConsumerGroupEvent event, String group, Object... args) {
         if (event == null) {
@@ -77,12 +84,15 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
                 // 获取消费组中所有消费者的 Channel
                 List<Channel> channels = (List<Channel>) args[0];
                 if (channels != null && brokerController.getBrokerConfig().isNotifyConsumerIdsChangedEnable()) {
+                    // 如果开启了 Broker 级别的重平衡主动通知，向消费组中所有消费者发送重平衡通知
                     if (this.brokerController.getBrokerConfig().isRealTimeNotifyConsumerChange()) {
+                        // 实时通知
                         for (Channel chl : channels) {
-                            // 向客户端发送冲平衡请求
+                            // 向客户端发送重平衡请求
                             this.brokerController.getBroker2Client().notifyConsumerIdsChanged(chl, group);
                         }
                     } else {
+                        // 放入缓存，定时通知
                         consumerChannelMap.put(group, channels);
                     }
                 }
@@ -91,6 +101,7 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
                 this.brokerController.getConsumerFilterManager().unRegister(group);
                 break;
             case REGISTER:
+                // 如果是新消费组注册，注册消费组订阅信息
                 if (args == null || args.length < 1) {
                     return;
                 }

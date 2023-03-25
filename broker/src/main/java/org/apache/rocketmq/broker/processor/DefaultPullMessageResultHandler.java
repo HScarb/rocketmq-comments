@@ -225,6 +225,13 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
         return response;
     }
 
+    /**
+     * Netty channel 流控，判断 Netty channel 是否可写
+     *
+     * @param channel
+     * @param requestHeader
+     * @return
+     */
     private boolean channelIsWritable(Channel channel, PullMessageRequestHeader requestHeader) {
         if (this.brokerController.getBrokerConfig().isEnableNetWorkFlowControl()) {
             if (!channel.isWritable()) {

@@ -49,7 +49,9 @@ public class SubscriptionGroupConfig {
     // 如果消息阻塞，转向该 broker 上拉取消息
     private long whichBrokerWhenConsumeSlowly = 1;
 
-    // 当消费发生变化时，是否立即进行消息队列重新负载
+    /**
+     * 消费者组级别重平衡主动通知，当消费者组中的消费者数量发生变化时，是否主动通知所有消费者
+     */
     private boolean notifyConsumerIdsChangedEnable = true;
 
     private int groupSysFlag = 0;

@@ -123,6 +123,9 @@ public class BrokerConfig extends BrokerIdentity {
 
     private long shortPollingTimeMills = 1000;
 
+    /**
+     * Broker 级别配置，是否开启主动触发重平衡通知，当消费者组中的消费者数量发生变化时，是否主动通知所有消费者
+     */
     private boolean notifyConsumerIdsChangedEnable = true;
 
     private boolean highSpeedMode = false;
@@ -238,6 +241,9 @@ public class BrokerConfig extends BrokerIdentity {
     private int popCkOffsetMaxQueueSize = 20000;
     private boolean enableNotifyAfterPopOrderLockRelease = true;
 
+    /**
+     * 是否实时通知客户端消费者变化，进行重平衡。如果为 false 则定时通知，间隔为 15s
+     */
     private boolean realTimeNotifyConsumerChange = true;
 
     private boolean litePullMessageEnable = true;
