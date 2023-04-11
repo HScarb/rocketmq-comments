@@ -1170,6 +1170,9 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
                         messageExt.getProperties().put(MessageConst.PROPERTY_POP_CK, map.get(key) + MessageConst.KEY_SEPARATOR + messageExt.getQueueOffset());
                     } else {
                         if (messageExt.getProperty(MessageConst.PROPERTY_POP_CK) == null) {
+                            // 如果不存在 POP_CK，构造 POP_CK，放入消息属性。一般情况下，只有重试消费才会在 Broker 端加上 POP_CK
+                            // 先计算消息在队列中的逻辑偏移量
+                            // 获取队列 ID key，正常 Topic 为 0@{queue_id}，Retry topic 为 1@{queue_id}
                             String queueIdKey = ExtraInfoUtil.getStartOffsetInfoMapKey(messageExt.getTopic(), messageExt.getQueueId());
                             String queueOffsetKey = ExtraInfoUtil.getQueueOffsetMapKey(messageExt.getTopic(), messageExt.getQueueId(), messageExt.getQueueOffset());
                             int index = sortMap.get(queueIdKey).indexOf(messageExt.getQueueOffset());
