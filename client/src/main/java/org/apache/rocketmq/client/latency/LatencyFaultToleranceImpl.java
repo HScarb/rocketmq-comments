@@ -29,6 +29,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
 
     private final ThreadLocalIndex randomItem = new ThreadLocalIndex();
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void updateFaultItem(final String name, final long currentLatency, final long notAvailableDuration) {
         // 尝试从缓存中获取 FaultItem
@@ -51,6 +54,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isAvailable(final String name) {
         final FaultItem faultItem = this.faultItemTable.get(name);
@@ -60,11 +66,17 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         return true;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void remove(final String name) {
         this.faultItemTable.remove(name);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String pickOneAtLeast() {
         final Enumeration<FaultItem> elements = this.faultItemTable.elements();

@@ -24,6 +24,12 @@ import org.apache.rocketmq.acl.common.AclException;
 import org.apache.rocketmq.acl.common.Permission;
 
 public class PlainPermissionChecker implements PermissionChecker {
+    /**
+     * 验证是否有某资源的访问权限
+     *
+     * @param checkedAccess 客户端请求需要的资源权限
+     * @param ownedAccess 该账号拥有的资源权限
+     */
     public void check(AccessResource checkedAccess, AccessResource ownedAccess) {
         PlainAccessResource checkedPlainAccess = (PlainAccessResource) checkedAccess;
         PlainAccessResource ownedPlainAccess = (PlainAccessResource) ownedAccess;
@@ -34,21 +40,26 @@ public class PlainPermissionChecker implements PermissionChecker {
         Map<String, Byte> ownedPermMap = ownedPlainAccess.getResourcePermMap();
 
         if (needCheckedPermMap == null) {
+            // 本次操作无需权限验证，直接通过
             // If the needCheckedPermMap is null,then return
             return;
         }
 
         if (ownedPermMap == null && ownedPlainAccess.isAdmin()) {
+            // 该账号未设置任何访问规则，且用户是管理员，直接通过
             // If the ownedPermMap is null and it is an admin user, then return
             return;
         }
 
+        // 遍历需要的权限与拥有的权限进行对比
         for (Map.Entry<String, Byte> needCheckedEntry : needCheckedPermMap.entrySet()) {
             String resource = needCheckedEntry.getKey();
             Byte neededPerm = needCheckedEntry.getValue();
+            // 重试 Topic 需要获取默认消费组的权限
             boolean isGroup = PlainAccessResource.isRetryTopic(resource);
 
             if (ownedPermMap == null || !ownedPermMap.containsKey(resource)) {
+                // 对于重试 Topic，它不会被配置在 ACL 文件中，获取默认消费组的权限
                 // Check the default perm
                 byte ownedPerm = isGroup ? ownedPlainAccess.getDefaultGroupPerm() :
                     ownedPlainAccess.getDefaultTopicPerm();

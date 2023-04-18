@@ -22,6 +22,9 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.logging.org.slf4j.Logger;
 import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 
+/**
+ * MQ 的 Broker 故障策略，
+ */
 public class MQFaultStrategy {
     private final static Logger log = LoggerFactory.getLogger(MQFaultStrategy.class);
     private final LatencyFaultTolerance<String> latencyFaultTolerance = new LatencyFaultToleranceImpl();
@@ -74,7 +77,7 @@ public class MQFaultStrategy {
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
                     int pos = index++ % tpInfo.getMessageQueueList().size();
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
-                    // 验证该消息队列是否可用，规避注册过不可用的 Broker。
+                    // 判断该消息队列是否可用，规避注册过不可用的 Broker。
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName()))
                         return mq;
                 }
@@ -106,7 +109,7 @@ public class MQFaultStrategy {
      * 处理发送异常，更新发送失败条目（Broker）
      *
      * @param brokerName Broker 名称
-     * @param currentLatency 本次发送延迟时间
+     * @param currentLatency 本次发送等待时间
      * @param isolation 是否规避 Broker。true：规避该 Broker 30s；false：规避时间为本次消息发送延迟时间
      */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {

@@ -606,8 +606,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     /**
      * 处理发送异常，更新发送失败条目（Broker）
      *
-     * @param brokerName Broker 名称
-     * @param currentLatency 本次发送延迟时间
+     * @param brokerName 发送失败的 Broker 名称
+     * @param currentLatency 本次发送等待时间
      * @param isolation 是否规避 Broker。true：规避该 Broker 30s；false：规避时间为本次消息发送延迟时间
      */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
