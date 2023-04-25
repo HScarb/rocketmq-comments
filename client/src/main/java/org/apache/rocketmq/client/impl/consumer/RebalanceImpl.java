@@ -464,6 +464,7 @@ public abstract class RebalanceImpl {
         if (messageQueueAssignments == null) {
             return false;
         }
+        // 分配到的队列
         Set<MessageQueue> mqSet = new HashSet<>();
         for (MessageQueueAssignment messageQueueAssignment : messageQueueAssignments) {
             if (messageQueueAssignment.getMessageQueue() != null) {
@@ -471,10 +472,13 @@ public abstract class RebalanceImpl {
             }
         }
         Set<MessageQueue> mqAll = null;
+        // 判断队列分配是否发生变化
         boolean changed = this.updateMessageQueueAssignment(topic, messageQueueAssignments, isOrder);
         if (changed) {
+            // 队列分配发生变化
             log.info("broker rebalanced result changed. allocateMessageQueueStrategyName={}, group={}, topic={}, clientId={}, assignmentSet={}",
                 strategyName, consumerGroup, topic, this.mQClientFactory.getClientId(), messageQueueAssignments);
+            // 上报心跳给 Broker，将订阅关系发送给 Broker
             this.messageQueueChanged(topic, mqAll, mqSet);
         }
 
@@ -645,7 +649,7 @@ public abstract class RebalanceImpl {
     }
 
     /**
-     * POP 模式消费，更新订阅关系
+     * Broker 端重平衡，更新订阅关系
      *
      * @param topic
      * @param assignments 分配到的队列

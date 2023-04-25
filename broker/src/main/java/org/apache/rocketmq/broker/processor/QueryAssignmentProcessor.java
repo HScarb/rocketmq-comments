@@ -81,8 +81,10 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
         RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
             case RequestCode.QUERY_ASSIGNMENT:
+                // 查询 Broker 端重平衡结果
                 return this.queryAssignment(ctx, request);
             case RequestCode.SET_MESSAGE_REQUEST_MODE:
+                // 设置 Topic 的拉取模式：PULL/POP
                 return this.setMessageRequestMode(ctx, request);
             default:
                 break;
@@ -217,7 +219,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
                 List<MessageQueue> allocateResult = null;
 
                 try {
-                    // 根据重平衡策略名称获取策略
+                    // 根据重平衡策略名称获取队列分配策略
                     AllocateMessageQueueStrategy allocateMessageQueueStrategy = name2LoadStrategy.get(strategyName);
                     if (null == allocateMessageQueueStrategy) {
                         log.warn("QueryLoad: unsupported strategy [{}],  {}", strategyName, RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
@@ -330,6 +332,7 @@ public class QueryAssignmentProcessor implements NettyRequestProcessor {
 
     /**
      * 设置消息拉取模式
+     *
      * @param ctx
      * @param request
      * @return

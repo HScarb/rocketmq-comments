@@ -51,7 +51,7 @@ public class RebalancePushImpl extends RebalanceImpl {
     }
 
     /**
-     * 如果消费的 MessageQueue 变化，上报 Broker，将订阅关系发送给 Broker
+     * 如果消费的 MessageQueue 变化，上报心跳给 Broker，将订阅关系发送给 Broker
      * @param topic
      * @param mqAll
      * @param mqDivided
