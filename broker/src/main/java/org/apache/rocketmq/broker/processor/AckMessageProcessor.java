@@ -188,6 +188,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
             if (requestHeader.getOffset() < oldOffset) {
                 return response;
             }
+            // 获取 ACK 的队列的 Pop 消费锁，防止 ACK 的同时被消费
             while (!this.brokerController.getPopMessageProcessor().getQueueLockManager().tryLock(lockKey)) {
             }
             try {
@@ -201,11 +202,13 @@ public class AckMessageProcessor implements NettyRequestProcessor {
                     requestHeader.getQueueId(), requestHeader.getOffset(),
                     ExtraInfoUtil.getPopTime(extraInfo));
                 if (nextOffset > -1) {
+                    // ACK 成功，提交消费进度
                     if (!this.brokerController.getConsumerOffsetManager().hasOffsetReset(
                         requestHeader.getTopic(), requestHeader.getConsumerGroup(), requestHeader.getQueueId())) {
                         this.brokerController.getConsumerOffsetManager().commitOffset(channel.remoteAddress().toString(),
                             requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(), nextOffset);
                     }
+                    // 顺序消息 ACK 成功，立刻 POP 下一条消息
                     if (!this.brokerController.getConsumerOrderInfoManager().checkBlock(requestHeader.getTopic(),
                         requestHeader.getConsumerGroup(), requestHeader.getQueueId(), invisibleTime)) {
                         this.brokerController.getPopMessageProcessor().notifyMessageArriving(

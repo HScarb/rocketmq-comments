@@ -101,9 +101,11 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
         String[] extraInfo = ExtraInfoUtil.split(requestHeader.getExtraInfo());
 
         if (ExtraInfoUtil.isOrder(extraInfo)) {
+            // 顺序消费修改不可见时间
             return processChangeInvisibleTimeForOrder(requestHeader, extraInfo, response, responseHeader);
         }
 
+        // 创建新的 invisible time 的 CK，并设置定时投递
         // add new ck
         long now = System.currentTimeMillis();
         PutMessageResult ckResult = appendCheckPoint(requestHeader, ExtraInfoUtil.getReviveQid(extraInfo), requestHeader.getQueueId(), requestHeader.getOffset(), now, ExtraInfoUtil.getBrokerName(extraInfo));
@@ -117,6 +119,7 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
             return response;
         }
 
+        // 确认老的 CK
         // ack old msg.
         try {
             ackOrigin(requestHeader, extraInfo);
@@ -202,6 +205,17 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
         PopMetricsManager.incPopReviveAckPutCount(ackMsg, putMessageResult.getPutMessageStatus());
     }
 
+    /**
+     * 新建一个包含新 invisible time 的 CK，放到 REVIVE Topic 中
+     *
+     * @param requestHeader
+     * @param reviveQid
+     * @param queueId
+     * @param offset
+     * @param popTime
+     * @param brokerName
+     * @return 消息保存结果
+     */
     private PutMessageResult appendCheckPoint(final ChangeInvisibleTimeRequestHeader requestHeader, int reviveQid,
         int queueId, long offset, long popTime, String brokerName) {
         // add check point msg to revive log
@@ -225,6 +239,7 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
         msgInner.setBornTimestamp(System.currentTimeMillis());
         msgInner.setBornHost(this.brokerController.getStoreHost());
         msgInner.setStoreHost(this.brokerController.getStoreHost());
+        // 设置消息定时投递，时间为上次 Pop 时间戳 + 不可见时长 - 1s，即：在不可见时间到期前 1s 时投递
         msgInner.setDeliverTimeMs(ck.getReviveTime() - PopAckConstants.ackTimeInterval);
         msgInner.getProperties().put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, PopMessageProcessor.genCkUniqueId(ck));
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));

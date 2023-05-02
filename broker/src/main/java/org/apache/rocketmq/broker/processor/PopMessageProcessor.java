@@ -109,9 +109,9 @@ public class PopMessageProcessor implements NettyRequestProcessor {
     private static final int NOT_POLLING = 3;
 
     // Topic 对应的消费者组
-    private ConcurrentHashMap<String, ConcurrentHashMap<String, Byte>> topicCidMap;
+    private ConcurrentHashMap<String /* Topic */, ConcurrentHashMap<String, Byte>> topicCidMap;
     // 长轮询的 Pop 请求表，每个队列默认最大 1024 个等待中的 Pop 请求
-    private ConcurrentLinkedHashMap<String, ConcurrentSkipListSet<PopRequest>> pollingMap;
+    private ConcurrentLinkedHashMap<String /* polling key: TOPIC@GROUP@QUEUE_ID */, ConcurrentSkipListSet<PopRequest>> pollingMap;
     // 长轮询等待中的消费者数量，默认最大值为 10w
     private AtomicLong totalPollingNum = new AtomicLong(0);
     private PopLongPollingService popLongPollingService;
@@ -208,6 +208,9 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         }
     }
 
+    /**
+     * 消息分发服务（ReputMessageService）调用，提醒订阅这个 Topic 的所有消费组，有消息到达
+     */
     public void notifyMessageArriving(final String topic, final int queueId) {
         ConcurrentHashMap<String, Byte> cids = topicCidMap.get(topic);
         if (cids == null) {
@@ -215,17 +218,29 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         }
         for (Entry<String, Byte> cid : cids.entrySet()) {
             if (queueId >= 0) {
+                // 提醒订阅 Topic 所有队列的消费组（queue id < 0 表示 Pop Topic 下所有队列）
                 notifyMessageArriving(topic, cid.getKey(), -1);
             }
+            // 提醒订阅 Topic 指定队列的消费组
             notifyMessageArriving(topic, cid.getKey(), queueId);
         }
     }
 
+    /**
+     * 新消息到达，唤醒长轮询中的 Pop 请求，立即执行 Pop 请求处理
+     *
+     * @param topic
+     * @param cid     消费组 ID
+     * @param queueId 队列 ID，-1 表示 Topic 下所有队列
+     * @return        是否有长轮询的 Pop 请求
+     */
     public boolean notifyMessageArriving(final String topic, final String cid, final int queueId) {
+        // 根据 polling key 获取轮询状态的 Pop 消息请求队列
         ConcurrentSkipListSet<PopRequest> remotingCommands = pollingMap.get(KeyBuilder.buildPollingKey(topic, cid, queueId));
         if (remotingCommands == null || remotingCommands.isEmpty()) {
             return false;
         }
+        // 获取轮询状态下的第一个 Pop 消息请求
         PopRequest popRequest = remotingCommands.pollFirst();
         //clean inactive channel
         while (popRequest != null && !popRequest.getChannel().isActive()) {
@@ -240,9 +255,16 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         if (brokerController.getBrokerConfig().isEnablePopLog()) {
             POP_LOGGER.info("lock release , new msg arrive , wakeUp : {}", popRequest);
         }
+        // 重新执行 Pop 处理逻辑
         return wakeUp(popRequest);
     }
 
+    /**
+     * 重新执行 Pop 消息请求处理逻辑
+     *
+     * @param request
+     * @return
+     */
     private boolean wakeUp(final PopRequest request) {
         if (request == null || !request.complete()) {
             return false;
@@ -497,6 +519,7 @@ public class PopMessageProcessor implements NettyRequestProcessor {
                 // 没有拉取到消息，长轮询
                 int pollingResult = polling(channel, request, requestHeader);
                 if (POLLING_SUC == pollingResult) {
+                    // 将请求加入长轮询等待队列成功，不返回 response 信息给消费者
                     return null;
                 } else if (POLLING_FULL == pollingResult) {
                     finalResponse.setCode(ResponseCode.POLLING_FULL);
@@ -823,6 +846,7 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         if (requestHeader.getPollTime() <= 0 || this.popLongPollingService.isStopped()) {
             return NOT_POLLING;
         }
+        // 将当前消费者加入 Topic 的消费者列表
         ConcurrentHashMap<String, Byte> cids = topicCidMap.get(requestHeader.getTopic());
         if (cids == null) {
             cids = new ConcurrentHashMap<>();
@@ -836,13 +860,13 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         long expired = requestHeader.getBornTime() + requestHeader.getPollTime();
         // 构造 Pop 请求
         final PopRequest request = new PopRequest(remotingCommand, channel, expired);
-        // 长轮询等待的客户端超过数量上限
+        // 长轮询等待的客户端超过数量上限（10w）
         boolean isFull = totalPollingNum.get() >= this.brokerController.getBrokerConfig().getMaxPopPollingSize();
         if (isFull) {
             POP_LOGGER.info("polling {}, result POLLING_FULL, total:{}", remotingCommand, totalPollingNum.get());
             return POLLING_FULL;
         }
-        // 是否已经超时
+        // 请求是否已经超时，超时则直接返回
         boolean isTimeout = request.isTimeout();
         if (isTimeout) {
             if (brokerController.getBrokerConfig().isEnablePopLog()) {
@@ -852,7 +876,7 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         }
         String key = KeyBuilder.buildPollingKey(requestHeader.getTopic(), requestHeader.getConsumerGroup(),
             requestHeader.getQueueId());
-        // 从长轮询表中查询长轮询队列
+        // 从长轮询表中查询长轮询请求队列
         ConcurrentSkipListSet<PopRequest> queue = pollingMap.get(key);
         if (queue == null) {
             queue = new ConcurrentSkipListSet<>(PopRequest.COMPARATOR);
@@ -863,14 +887,15 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         } else {
             // check size
             int size = queue.size();
+            // 队列长度大于 1024，返回 POLLING_FULL
             if (size > brokerController.getBrokerConfig().getPopPollingSize()) {
                 POP_LOGGER.info("polling {}, result POLLING_FULL, singleSize:{}", remotingCommand, size);
                 return POLLING_FULL;
             }
         }
+        // 将 Pop 请求加入长轮询等待队列，增加等待中的长轮询请求数量
         if (queue.add(request)) {
             remotingCommand.setSuspended(true);
-            // 将 Pop 请求加入长轮询等待队列，增加等待中的长轮询请求数量
             totalPollingNum.incrementAndGet();
             if (brokerController.getBrokerConfig().isEnablePopLog()) {
                 POP_LOGGER.info("polling {}, result POLLING_SUC", remotingCommand);
@@ -998,6 +1023,9 @@ public class PopMessageProcessor implements NettyRequestProcessor {
         return byteBuffer.array();
     }
 
+    /**
+     * Pop 消息长轮询服务
+     */
     public class PopLongPollingService extends ServiceThread {
 
         private long lastCleanTime = 0;
