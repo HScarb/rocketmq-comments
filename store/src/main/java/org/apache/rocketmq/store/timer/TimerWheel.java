@@ -29,6 +29,9 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
+/**
+ * 时间轮，用于定时消息到时
+ */
 public class TimerWheel {
 
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -139,6 +142,16 @@ public class TimerWheel {
         localBuffer.get().putLong(firstPos);
         localBuffer.get().putLong(lastPos);
     }
+
+    /**
+     * 将 TimerLog 写入的消息放入时间轮槽
+     *
+     * @param timeMs 定时投递时间
+     * @param firstPos 该定时时间的第一条消息在 TimerLog 中的物理偏移量
+     * @param lastPos 该定时时间的最后（最新）一条消息在 TimerLog 中的物理偏移量
+     * @param num 该定时时间的消息数量
+     * @param magic
+     */
     public void putSlot(long timeMs, long firstPos, long lastPos, int num, int magic) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
         localBuffer.get().putLong(timeMs / precisionMs);
