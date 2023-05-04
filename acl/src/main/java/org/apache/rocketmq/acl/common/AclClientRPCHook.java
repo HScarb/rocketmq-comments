@@ -26,6 +26,9 @@ import static org.apache.rocketmq.acl.common.SessionCredentials.ACCESS_KEY;
 import static org.apache.rocketmq.acl.common.SessionCredentials.SECURITY_TOKEN;
 import static org.apache.rocketmq.acl.common.SessionCredentials.SIGNATURE;
 
+/**
+ * 客户端 ACL RPCHook，用于在客户端发送请求前，对请求进行签名
+ */
 public class AclClientRPCHook implements RPCHook {
     private final SessionCredentials sessionCredentials;
 
@@ -52,6 +55,7 @@ public class AclClientRPCHook implements RPCHook {
     }
 
     protected SortedMap<String, String> parseRequestContent(RemotingCommand request) {
+        // 将customHeader中定义的键值对参数写入extFields中
         request.makeCustomHeaderToNet();
         Map<String, String> extFields = request.getExtFields();
         // Sort property

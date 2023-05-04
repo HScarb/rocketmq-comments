@@ -79,6 +79,7 @@ public class QueryMessageProcessor extends AsyncNettyRequestProcessor {
 
         response.setOpaque(request.getOpaque());
 
+        // 是否是用 UNIQUE_KEY 查询
         String isUniqueKey = request.getExtFields().get(MixAll.UNIQUE_MSG_QUERY_FLAG);
         if (isUniqueKey != null && isUniqueKey.equals("true")) {
             requestHeader.setMaxNum(this.brokerController.getMessageStoreConfig().getDefaultQueryMaxNum());

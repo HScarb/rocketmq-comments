@@ -152,6 +152,7 @@ public class PlainAccessValidator implements AccessValidator {
         SortedMap<String, String> map = new TreeMap<String, String>();
         for (Map.Entry<String, String> entry : request.getExtFields().entrySet()) {
             if (!SessionCredentials.SIGNATURE.equals(entry.getKey())
+                // 4.9.3 以及更早的版本之前，客户端计算签名时不会将 UNIQUE_MSG_QUERY_FLAG 字段计算在内，所以 Broker 端也不需要参与签名
                 && !MixAll.UNIQUE_MSG_QUERY_FLAG.equals(entry.getKey())) {
                 map.put(entry.getKey(), entry.getValue());
             }
