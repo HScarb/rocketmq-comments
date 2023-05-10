@@ -200,6 +200,9 @@ public class PlainAccessResource implements AccessResource {
                 map.put(entry.getKey(), entry.getValue());
             }
         }
+        // 4.9.3 版本之前，客户端计算签名时不会将 UNIQUE_MSG_QUERY_FLAG 计算在内，所以服务端计算时需要移除
+        // 4.9.4 版本以及之后，ISSUE #3906 的修改让请求的所有 extField 都参与签名计算，所以服务端计算时不再需要移除
+        // Ref: AclClientRPCHook#parseRequestContent
         if (request.getVersion() <= MQVersion.Version.V4_9_3.ordinal()
             && map.containsKey(MixAll.UNIQUE_MSG_QUERY_FLAG)) {
             map.remove(MixAll.UNIQUE_MSG_QUERY_FLAG);
