@@ -1101,6 +1101,9 @@ public class TimerMessageStore {
         return null;
     }
 
+    /**
+     * 将定时消息转换成普通消息或继续轮转的定时消息，取消定时属性
+     */
     private MessageExtBrokerInner convert(MessageExt messageExt, long enqueueTime, boolean needRoll) {
         if (enqueueTime != -1) {
             MessageAccessor.putProperty(messageExt, TIMER_ENQUEUE_MS, enqueueTime + "");
@@ -1144,8 +1147,10 @@ public class TimerMessageStore {
         int retryNum = 0;
         while (retryNum < 3) {
             if (null == putMessageResult || null == putMessageResult.getPutMessageStatus()) {
+                // 没有投递结果，重试
                 retryNum++;
             } else {
+                // 有投递结果
                 switch (putMessageResult.getPutMessageStatus()) {
                     case PUT_OK:
                         if (brokerStatsManager != null) {
@@ -1170,6 +1175,7 @@ public class TimerMessageStore {
                         retryNum++;
                 }
             }
+            // 等待 0.05s 后重试
             Thread.sleep(50);
             putMessageResult = messageStore.putMessage(message);
             LOGGER.warn("Retrying to do put timer msg retryNum:{} putRes:{} msg:{}", retryNum, putMessageResult, message);
@@ -1513,6 +1519,9 @@ public class TimerMessageStore {
         }
     }
 
+    /**
+     * 投递消息服务，将消息从 dequeuePutQueue 中取出，若已经到期，投递到 CommitLog 中
+     */
     class TimerDequeuePutMessageService extends AbstractStateService {
 
         @Override public String getServiceName() {
@@ -1535,6 +1544,7 @@ public class TimerMessageStore {
                         continue;
                     }
                     setState(AbstractStateService.RUNNING);
+                    // 投递结果是否成功
                     boolean doRes = false;
                     boolean tmpDequeueChangeFlag = false;
                     try {
@@ -1549,8 +1559,10 @@ public class TimerMessageStore {
                                 DefaultStoreMetricsManager.incTimerDequeueCount(getRealTopic(tr.getMsg()));
                                 addMetric(tr.getMsg(), -1);
                                 MessageExtBrokerInner msg = convert(tr.getMsg(), tr.getEnqueueTime(), needRoll(tr.getMagic()));
+                                // 投递到 CommitLog
                                 doRes = PUT_NEED_RETRY != doPut(msg, needRoll(tr.getMagic()));
                                 while (!doRes && !isStopped()) {
+                                    // 如果投递失败需要重试，等待{精确度 / 2}时间然后重新投递
                                     if (!isRunningDequeue()) {
                                         dequeueStatusChangeFlag = true;
                                         tmpDequeueChangeFlag = true;
