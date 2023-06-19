@@ -36,14 +36,24 @@ public class FilterAPI {
         return simple;
     }
 
+    /**
+     * 根据订阅的过滤表达式构造订阅信息
+     *
+     * @param topic
+     * @param subString 过滤表达式
+     * @return
+     * @throws Exception
+     */
     public static SubscriptionData buildSubscriptionData(String topic, String subString) throws Exception {
         SubscriptionData subscriptionData = new SubscriptionData();
         subscriptionData.setTopic(topic);
         subscriptionData.setSubString(subString);
 
         if (null == subString || subString.equals(SubscriptionData.SUB_ALL) || subString.length() == 0) {
+            // 全匹配
             subscriptionData.setSubString(SubscriptionData.SUB_ALL);
         } else {
+            // tags 匹配，以 || 分割
             String[] tags = subString.split("\\|\\|");
             if (tags.length > 0) {
                 for (String tag : tags) {
