@@ -22,12 +22,32 @@ public class Stats {
     public static final String QUEUE_PUT_SIZE = "QUEUE_PUT_SIZE";
     public static final String QUEUE_GET_NUMS = "QUEUE_GET_NUMS";
     public static final String QUEUE_GET_SIZE = "QUEUE_GET_SIZE";
+
+    /**
+     * TOPIC 维度发消息成功次数统计
+     */
     public static final String TOPIC_PUT_NUMS = "TOPIC_PUT_NUMS";
+
+    /**
+     * TOPIC 维度发消息成功消息总大小统计
+     */
     public static final String TOPIC_PUT_SIZE = "TOPIC_PUT_SIZE";
+
+    /**
+     * 消费组维度 GET 请求成功次数统计
+     */
     public static final String GROUP_GET_NUMS = "GROUP_GET_NUMS";
+
+    /**
+     * 消费组维度 GET 请求成功消息总大小统计
+     */
     public static final String GROUP_GET_SIZE = "GROUP_GET_SIZE";
     public static final String SNDBCK_PUT_NUMS = "SNDBCK_PUT_NUMS";
     public static final String BROKER_PUT_NUMS = "BROKER_PUT_NUMS";
+
+    /**
+     * Broker 维度 GET 请求成功次数统计
+     */
     public static final String BROKER_GET_NUMS = "BROKER_GET_NUMS";
     public static final String GROUP_GET_FROM_DISK_NUMS = "GROUP_GET_FROM_DISK_NUMS";
     public static final String GROUP_GET_FROM_DISK_SIZE = "GROUP_GET_FROM_DISK_SIZE";
@@ -43,5 +63,9 @@ public class Stats {
 
     public static final String GROUP_GET_FALL_SIZE = "GROUP_GET_FALL_SIZE";
     public static final String GROUP_GET_FALL_TIME = "GROUP_GET_FALL_TIME";
+
+    /**
+     * 消费组维度 GET 请求在 Broker 端的延迟时间总和
+     */
     public static final String GROUP_GET_LATENCY = "GROUP_GET_LATENCY";
 }

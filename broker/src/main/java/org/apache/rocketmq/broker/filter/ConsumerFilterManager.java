@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * 消费者过滤信息管理器，管理 SQL92 过滤信息
  * Consumer filter data manager.Just manage the consumers use expression filter.
  */
 public class ConsumerFilterManager extends ConfigManager {
@@ -47,6 +48,9 @@ public class ConsumerFilterManager extends ConfigManager {
 
     private static final long MS_24_HOUR = 24 * 3600 * 1000;
 
+    /**
+     * 过滤信息缓存，key 为 topic，value 为过滤信息，包含布隆过滤器
+     */
     private ConcurrentMap<String/*Topic*/, FilterDataMapByTopic>
         filterDataByTopic = new ConcurrentHashMap<String/*Topic*/, FilterDataMapByTopic>(256);
 
@@ -71,6 +75,7 @@ public class ConsumerFilterManager extends ConfigManager {
     }
 
     /**
+     * 根据拉取请求构造 SQL92 过滤信息，编译表达式
      * Build consumer filter data.Be care, bloom filter data is not included.
      *
      * @return maybe null
@@ -102,6 +107,12 @@ public class ConsumerFilterManager extends ConfigManager {
         return consumerFilterData;
     }
 
+    /**
+     * 新消费者注册时，注册它订阅的过滤信息
+     *
+     * @param consumerGroup
+     * @param subList
+     */
     public void register(final String consumerGroup, final Collection<SubscriptionData> subList) {
         for (SubscriptionData subscriptionData : subList) {
             register(
@@ -135,6 +146,16 @@ public class ConsumerFilterManager extends ConfigManager {
         }
     }
 
+    /**
+     * 注册 SQL92 的过滤信息，构造布隆过滤器
+     *
+     * @param topic
+     * @param consumerGroup
+     * @param expression
+     * @param type
+     * @param clientVersion
+     * @return
+     */
     public boolean register(final String topic, final String consumerGroup, final String expression,
         final String type, final long clientVersion) {
         if (ExpressionType.isTagType(type)) {

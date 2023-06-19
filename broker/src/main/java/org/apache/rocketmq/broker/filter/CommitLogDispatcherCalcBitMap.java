@@ -30,6 +30,7 @@ import java.util.Collection;
 import java.util.Iterator;
 
 /**
+ * 如果打开 isEnableCalcFilterBitMap，会在 reput 时计算位映射。如果允许，会存到 consumeQueueExt 中。
  * Calculate bit map of filter.
  */
 public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {

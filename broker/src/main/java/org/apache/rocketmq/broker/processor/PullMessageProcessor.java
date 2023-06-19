@@ -140,6 +140,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor {
         final boolean hasSuspendFlag = PullSysFlag.hasSuspendFlag(requestHeader.getSysFlag());
         // 客户端是否提交了消费进度
         final boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(requestHeader.getSysFlag());
+        // 客户端是否提交了订阅信息（用作消息过滤）
         final boolean hasSubscriptionFlag = PullSysFlag.hasSubscriptionFlag(requestHeader.getSysFlag());
 
         // 计算挂起时间

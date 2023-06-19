@@ -171,7 +171,7 @@ public class ExpressionMessageFilter implements MessageFilter {
         try {
             MessageEvaluationContext context = new MessageEvaluationContext(tempProperties);
 
-            // 根据编译好的表达式进行过滤
+            // 用编译好的 SQL92 表达式去过滤消息属性
             ret = realFilterData.getCompiledExpression().evaluate(context);
         } catch (Throwable e) {
             log.error("Message Filter error, " + realFilterData + ", " + tempProperties, e);
