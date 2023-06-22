@@ -27,7 +27,7 @@ import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.logging.InternalLogger;
 
 /**
- * 监控统计数据指标集合
+ * 监控统计数据指标集合，定期聚合指标信息，定期打印日志
  */
 public class StatsItemSet {
     // 指标集合表
@@ -47,7 +47,7 @@ public class StatsItemSet {
     }
 
     /**
-     * 启动定时任务，对数据进行采样
+     * 启动定时任务，对数据进行采样和打印到日志
      */
     public void init() {
 
@@ -81,6 +81,7 @@ public class StatsItemSet {
             }
         }, 0, 1, TimeUnit.HOURS);
 
+        // 按分钟聚合打印指标数据
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
