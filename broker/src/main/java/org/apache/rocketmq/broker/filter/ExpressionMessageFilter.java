@@ -108,6 +108,7 @@ public class ExpressionMessageFilter implements MessageFilter {
                 return true;
             }
 
+            // 从 ConsumeQueueExt 中取出消息 Reput 时计算的 BitMap，它表示通过过滤条件的所有 SQL92 消费者名称。
             byte[] filterBitMap = cqExtUnit.getFilterBitMap();
             BloomFilter bloomFilter = this.consumerFilterManager.getBloomFilter();
             if (filterBitMap == null || !this.bloomDataValid
@@ -117,6 +118,7 @@ public class ExpressionMessageFilter implements MessageFilter {
 
             BitsArray bitsArray = null;
             try {
+                // 判断当前消费者是否需要消费该消息（是否通过过滤），如果返回 true，表示可能需要消费该消息，false 则一定不需要消费
                 bitsArray = BitsArray.create(filterBitMap);
                 boolean ret = bloomFilter.isHit(consumerFilterData.getBloomFilterData(), bitsArray);
                 log.debug("Pull {} by bit map:{}, {}, {}", ret, consumerFilterData, bitsArray, cqExtUnit);
@@ -148,7 +150,7 @@ public class ExpressionMessageFilter implements MessageFilter {
             return true;
         }
 
-        // TAG 模式
+        // TAG 模式，直接返回，在消费者端进一步过滤
         if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
             return true;
         }

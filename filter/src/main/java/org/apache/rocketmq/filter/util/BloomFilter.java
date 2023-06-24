@@ -86,6 +86,7 @@ public class BloomFilter {
     }
 
     /**
+     * 计算给定字符串的哈希值，进行 k 次哈希，返回一个 int 数组，数组中的每个值是位的位置。
      * Calculate bit positions of {@code str}.
      * <p>
      * See "Less Hashing, Same Performance: Building a Better Bloom Filter" by Adam Kirsch and Michael
@@ -113,6 +114,7 @@ public class BloomFilter {
     }
 
     /**
+     * 接收一个字符串 str，计算它在Bloom过滤器中对应的位的位置，然后返回一个 BloomFilterData 对象，该对象包含这些位置。
      * Calculate bit positions of {@code str} to construct {@code BloomFilterData}
      */
     public BloomFilterData generate(String str) {
@@ -122,6 +124,7 @@ public class BloomFilter {
     }
 
     /**
+     * 接收一个字符串 str 和一个 BitsArray 对象，首先计算字符串对应的位的位置，然后在 BitsArray 对象中将这些位置设置为1。
      * Calculate bit positions of {@code str}, then set the related {@code bits} positions to 1.
      */
     public void hashTo(String str, BitsArray bits) {
@@ -129,6 +132,7 @@ public class BloomFilter {
     }
 
     /**
+     * 接收一个整数数组和一个 BitsArray 对象，整数数组表示位的位置，该方法将 BitsArray 对象中对应位置的位设置为1。
      * Set the related {@code bits} positions to 1.
      */
     public void hashTo(int[] bitPositions, BitsArray bits) {
@@ -140,6 +144,7 @@ public class BloomFilter {
     }
 
     /**
+     * 接收一个 BloomFilterData 对象和一个 BitsArray 对象，将 BitsArray 对象中对应位置的位设置为 1。
      * Extra check:
      * <li>1. check {@code filterData} belong to this bloom filter.</li>
      * <p>
@@ -157,6 +162,7 @@ public class BloomFilter {
     }
 
     /**
+     * 接收一个字符串和一个 BitsArray 对象，检查给定的字符串是否可能存在于Bloom过滤器所表示的集合中。
      * Calculate bit positions of {@code str}, then check all the related {@code bits} positions is 1.
      *
      * @return true: all the related {@code bits} positions is 1
@@ -166,6 +172,7 @@ public class BloomFilter {
     }
 
     /**
+     * 检查给定的位位置是否都已经被设置为 1。
      * Check all the related {@code bits} positions is 1.
      *
      * @return true: all the related {@code bits} positions is 1
@@ -180,6 +187,7 @@ public class BloomFilter {
     }
 
     /**
+     * 检查给定的 BloomFilterData 对应的位位置是否都已经被设置为 1。
      * Check all the related {@code bits} positions is 1.
      *
      * @return true: all the related {@code bits} positions is 1
