@@ -89,8 +89,17 @@ public class TimerMessageStore {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final PerfCounter.Ticks perfs = new PerfCounter.Ticks(LOGGER);
+    /**
+     * 定时消息放入时间轮的等待队列
+     */
     private final BlockingQueue<TimerRequest> enqueuePutQueue;
+    /**
+     * 从时间轮取出的定时消息请求的等待队列
+     */
     private final BlockingQueue<List<TimerRequest>> dequeueGetQueue;
+    /**
+     *
+     */
     private final BlockingQueue<TimerRequest> dequeuePutQueue;
 
     private final ByteBuffer timerLogBuffer = ByteBuffer.allocate(4 * 1024);
@@ -682,6 +691,7 @@ public class TimerMessageStore {
                         // use CQ offset, not offset in Message
                         msgExt.setQueueOffset(offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE));
                         TimerRequest timerRequest = new TimerRequest(offsetPy, sizePy, delayedTime, System.currentTimeMillis(), MAGIC_DEFAULT, msgExt);
+                        // 无限次重试，直到成功放入 enqueuePutQueue，达到流控效果
                         while (true) {
                             if (enqueuePutQueue.offer(timerRequest, 3, TimeUnit.SECONDS)) {
                                 break;
@@ -706,6 +716,7 @@ public class TimerMessageStore {
                 if (!isRunningEnqueue()) {
                     return false;
                 }
+                // 移动消费队列下标，到下一个消费队列索引
                 currQueueOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
             }
             currQueueOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
@@ -719,6 +730,7 @@ public class TimerMessageStore {
     }
 
     /**
+     * 将 CommitLog 中的定时消息放入 TimerLog 和时间轮
      *
      * @param offsetPy 索引项在 TimerLog 中的物理偏移量
      * @param sizePy 索引项在 TimerLog 中的大小
@@ -1008,7 +1020,7 @@ public class TimerMessageStore {
                 }
                 dequeueGetQueue.put(deleteList);
             }
-            // 等待定时消息删除请求处理
+            // 等待定时消息删除请求处理（放入 dequeuePutQueue）
             //do we need to use loop with tryAcquire
             checkDequeueLatch(deleteLatch, currReadTimeMs);
 
@@ -1021,7 +1033,7 @@ public class TimerMessageStore {
                 }
                 dequeueGetQueue.put(normalList);
             }
-            // 等待定时消息请求处理
+            // 等待定时消息请求处理（放入 dequeuePutQueue）
             checkDequeueLatch(normalLatch, currReadTimeMs);
             // if master -> slave -> master, then the read time move forward, and messages will be lossed
             if (dequeueStatusChangeFlag) {
@@ -1183,6 +1195,13 @@ public class TimerMessageStore {
         return PUT_NO_RETRY;
     }
 
+    /**
+     * 根据定时消息的原始消息，构造新的消息
+     *
+     * @param msgExt 定时消息原始消息
+     * @param needRoll 是否需要轮转
+     * @return 新构造的消息
+     */
     private MessageExtBrokerInner convertMessage(MessageExt msgExt, boolean needRoll) {
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setBody(msgExt.getBody());
@@ -1206,6 +1225,7 @@ public class TimerMessageStore {
             msgInner.setTopic(msgExt.getTopic());
             msgInner.setQueueId(msgExt.getQueueId());
         } else {
+            // 将真正的 Topic 和 QueueId 从定时消息的原始消息属性中取出
             msgInner.setTopic(msgInner.getProperty(MessageConst.PROPERTY_REAL_TOPIC));
             msgInner.setQueueId(Integer.parseInt(msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID)));
             MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC);
@@ -1378,7 +1398,7 @@ public class TimerMessageStore {
 
     /**
      * 定时消息出队保存服务
-     * 将 enqueuePutQueue 中的定时消息保存到 TimerLog 中
+     * 将 enqueuePutQueue 中的定时消息保存到 TimerLog 和时间轮中
      */
     class TimerEnqueuePutService extends ServiceThread {
 
@@ -1558,6 +1578,7 @@ public class TimerMessageStore {
                                 perfs.startTick("dequeue_put");
                                 DefaultStoreMetricsManager.incTimerDequeueCount(getRealTopic(tr.getMsg()));
                                 addMetric(tr.getMsg(), -1);
+                                // 将原始定时消息的 Topic 和 QueueId 等信息复原，构造一个新的消息
                                 MessageExtBrokerInner msg = convert(tr.getMsg(), tr.getEnqueueTime(), needRoll(tr.getMagic()));
                                 // 投递到 CommitLog
                                 doRes = PUT_NEED_RETRY != doPut(msg, needRoll(tr.getMagic()));
@@ -1634,6 +1655,7 @@ public class TimerMessageStore {
                                     if (msgExt.getProperty(MessageConst.PROPERTY_TIMER_DEL_UNIQKEY) != null && tr.getDeleteList() != null) {
                                         tr.getDeleteList().add(msgExt.getProperty(MessageConst.PROPERTY_TIMER_DEL_UNIQKEY));
                                     }
+                                    // 处理删除消息请求成功，CountDownLatch -1
                                     tr.idempotentRelease();
                                     doRes = true;
                                 } else {
@@ -1645,6 +1667,7 @@ public class TimerMessageStore {
                                     if (null != uniqkey && tr.getDeleteList() != null && tr.getDeleteList().size() > 0 && tr.getDeleteList().contains(uniqkey)) {
                                         // 定时消息取消，什么都不做
                                         doRes = true;
+                                        // 处理定时消息请求成功，CountDownLatch -1
                                         tr.idempotentRelease();
                                         perfs.getCounter("dequeue_delete").flow(1);
                                     } else {

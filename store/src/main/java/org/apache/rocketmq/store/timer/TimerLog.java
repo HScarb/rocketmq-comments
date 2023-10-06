@@ -96,6 +96,7 @@ public class TimerLog {
             }
         }
         long currPosition = mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();
+        // 将定时消息索引写入 TimerLog
         if (!mappedFile.appendMessage(data, pos, len)) {
             log.error("Append error for timer log");
             return -1;
@@ -110,6 +111,12 @@ public class TimerLog {
         return mappedFile.selectMappedBuffer((int) (offsetPy % mappedFile.getFileSize()));
     }
 
+    /**
+     * 根据偏移量获取 Buffer
+     *
+     * @param offsetPy TimerLog 中的物理偏移量
+     * @return
+     */
     public SelectMappedBufferResult getWholeBuffer(long offsetPy) {
         MappedFile mappedFile = mappedFileQueue.findMappedFileByOffset(offsetPy);
         if (null == mappedFile)

@@ -56,6 +56,7 @@ import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.apache.rocketmq.store.logfile.MappedFile;
 
 /**
+ * DLedger 数据存储实现
  * Store all metadata downtime for recovery, data protection reliability
  */
 public class DLedgerCommitLog extends CommitLog {
@@ -64,20 +65,47 @@ public class DLedgerCommitLog extends CommitLog {
         System.setProperty("dLedger.multiPath.Splitter", MessageStoreConfig.MULTI_PATH_SPLITTER);
     }
 
+    /**
+     * DLedger 节点
+     */
     private final DLedgerServer dLedgerServer;
+    /**
+     * DLedger 配置信息
+     */
     private final DLedgerConfig dLedgerConfig;
+    /**
+     * DLedger 基于文件的存储实现
+     */
     private final DLedgerMmapFileStore dLedgerFileStore;
+    /**
+     * DLedger 管理的存储文件集合，即 MappedFileQueue
+     */
     private final MmapFileList dLedgerFileList;
 
+    /**
+     * DLedger 节点 ID
+     */
     //The id identifies the broker role, 0 means master, others means slave
     private final int id;
 
+    /**
+     * 消息序列化器
+     */
     private final MessageSerializer messageSerializer;
+    /**
+     * 记录消息追加的耗时（日志追加持有锁的时间）
+     */
     private volatile long beginTimeInDledgerLock = 0;
 
+    /**
+     * 旧的 CommitLog 文件中的最大偏移量，如果访问的偏移量大于它，则访问 DLedgerCommitLog；小于它则访问 CommitLog
+     */
     //This offset separate the old commitlog from dledger commitlog
     private long dividedCommitlogOffset = -1;
 
+    /**
+     * 是否正在恢复旧的 CommitLog 文件
+     */
     private boolean isInrecoveringOldCommitlog = false;
 
     private final StringBuilder msgIdBuilder = new StringBuilder();
@@ -103,6 +131,8 @@ public class DLedgerCommitLog extends CommitLog {
         id = Integer.parseInt(dLedgerConfig.getSelfId().substring(1)) + 1;
         dLedgerServer = new DLedgerServer(dLedgerConfig);
         dLedgerFileStore = (DLedgerMmapFileStore) dLedgerServer.getdLedgerStore();
+        // 添加消息 Append 事件处理钩子
+        // 如果开启了主从切换（DLedger 模式），消息 Append 时返回的物理便宜了不是 DLedger 日志条目的起始位置，而是其 body 的起始位置
         DLedgerMmapFileStore.AppendHook appendHook = (entry, buffer, bodyOffset) -> {
             assert bodyOffset == DLedgerEntry.BODY_OFFSET;
             buffer.position(buffer.position() + bodyOffset + MessageDecoder.PHY_POS_POSITION);
@@ -125,8 +155,13 @@ public class DLedgerCommitLog extends CommitLog {
         dLedgerConfig.setFileReservedHours(defaultMessageStore.getMessageStoreConfig().getFileReservedTime() + 1);
     }
 
+    /**
+     * 禁止删除 DLedger 文件
+     */
     private void disableDeleteDledger() {
+        // 禁止强制删除 DLedger 文件
         dLedgerConfig.setEnableDiskForceClean(false);
+        // 将文件保存时间设为 10 年
         dLedgerConfig.setFileReservedHours(24 * 365 * 10);
     }
 
@@ -266,14 +301,18 @@ public class DLedgerCommitLog extends CommitLog {
     }
 
     private void recover(long maxPhyOffsetOfConsumeQueue) {
+        // 逐一构建对应的 MmapFile，初始化三个文件指针：wrotePosition, flushedPosition, committedPosition
         dLedgerFileStore.load();
         if (dLedgerFileList.getMappedFiles().size() > 0) {
+            // 已存在 DLedger 数据文件，只需要恢复 DLedger 相关的数据文件。恢复 fileStore 管辖的 MMapFile
             dLedgerFileStore.recover();
             dividedCommitlogOffset = dLedgerFileList.getFirstMappedFile().getFileFromOffset();
+            // 如果存在旧的 CommitLog 文件，则禁止删除 DLedger 文件
             MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
             if (mappedFile != null) {
                 disableDeleteDledger();
             }
+            // 如果 ConsumeQueue 中存储的最大物理偏移量大于 DLedger 中最大的物理偏移量，则删除多余的 ConsumeQueue 文件
             long maxPhyOffset = dLedgerFileList.getMaxWrotePosition();
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= maxPhyOffset) {
@@ -282,16 +321,21 @@ public class DLedgerCommitLog extends CommitLog {
             }
             return;
         }
+        // 开启 DLedger 的首次启动，走下面流程
         //Indicate that, it is the first time to load mixed commitlog, need to recover the old commitlog
         isInrecoveringOldCommitlog = true;
+        // 恢复旧的 CommitLog 文件
         //No need the abnormal recover
         super.recoverNormally(maxPhyOffsetOfConsumeQueue);
         isInrecoveringOldCommitlog = false;
+        // 不存在旧的 CommitLog 文件，直接结束日志文件恢复流程
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
         if (mappedFile == null) {
             return;
         }
+        // 存在旧的 CommitLog 文件，需要将文件剩余部分全部填充，不再接收新的数据。新的数据全部写入 DLedgerCommitLog
         ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+        // 获取 CommitLog 的最后一个文件的最后写入点，尝试写入魔数。切换 DLedger 第一次启动时需要写入。
         byteBuffer.position(mappedFile.getWrotePosition());
         boolean needWriteMagicCode = true;
         // 1 TOTAL SIZE
@@ -302,15 +346,22 @@ public class DLedgerCommitLog extends CommitLog {
         } else {
             log.info("Recover old commitlog found a illegal magic code={}", magicCode);
         }
+        // 禁止强制删除 DLedger 文件
+        // 如果删除 DLedger 中的物理文件，物理偏移量会出现断层
+        // 正常情况下 maxCommitlogPhyOffset
         dLedgerConfig.setEnableDiskForceClean(false);
+        // dividedCommitLogOffset = 最后一个文件的起始偏移量 + 文件大小
         dividedCommitlogOffset = mappedFile.getFileFromOffset() + mappedFile.getFileSize();
         log.info("Recover old commitlog needWriteMagicCode={} pos={} file={} dividedCommitlogOffset={}", needWriteMagicCode, mappedFile.getFileFromOffset() + mappedFile.getWrotePosition(), mappedFile.getFileName(), dividedCommitlogOffset);
+        // 将最后一个未写满数据的 CommitLog 写满
         if (needWriteMagicCode) {
             byteBuffer.position(mappedFile.getWrotePosition());
+            // 写入文件剩余大小，作为消息大小，填满文件
             byteBuffer.putInt(mappedFile.getFileSize() - mappedFile.getWrotePosition());
             byteBuffer.putInt(BLANK_MAGIC_CODE);
             mappedFile.flush(0);
         }
+        // 更新 CommitLog 最后一个文件指针为文件大小，表示文件已写满
         mappedFile.setWrotePosition(mappedFile.getFileSize());
         mappedFile.setCommittedPosition(mappedFile.getFileSize());
         mappedFile.setFlushedPosition(mappedFile.getFileSize());
@@ -431,14 +482,18 @@ public class DLedgerCommitLog extends CommitLog {
                 beginTimeInDledgerLock = this.defaultMessageStore.getSystemClock().now();
                 queueOffset = getQueueOffsetByKey(msg, tranType);
                 encodeResult.setQueueOffsetKey(queueOffset, false);
+                // 构造日志条目追加请求
                 AppendEntryRequest request = new AppendEntryRequest();
                 request.setGroup(dLedgerConfig.getGroup());
                 request.setRemoteId(dLedgerServer.getMemberState().getSelfId());
                 request.setBody(encodeResult.getData());
+                // 调用 DLedger 服务追加日志条目
                 dledgerFuture = (AppendFuture<AppendEntryResponse>) dLedgerServer.handleAppend(request);
                 if (dledgerFuture.getPos() == -1) {
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.OS_PAGE_CACHE_BUSY, new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR)));
                 }
+                // 根据 DLedger 的物理偏移量计算真正的消息物理偏移量
+                // handleAppend() 返回的物理偏移量实际是 DLedger 存储协议的偏移量，需要加上 DLedger 条目头的偏移量才是消息条目的偏移量
                 long wroteOffset = dledgerFuture.getPos() + DLedgerEntry.BODY_OFFSET;
 
                 int msgIdLength = (msg.getSysFlag() & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 4 + 4 + 8 : 16 + 4 + 8;
@@ -635,13 +690,17 @@ public class DLedgerCommitLog extends CommitLog {
 
     @Override
     public SelectMappedBufferResult getMessage(final long offset, final int size) {
+        // 如果查找的物理偏移量小于 dividedCommitLogOffset，从老的 CommitLog 中查找
         if (offset < dividedCommitlogOffset) {
             return super.getMessage(offset, size);
         }
+        // 查找的偏移量大于等于 dividedCommitLogOffset，从 DLedger 日志文件中查找
         int mappedFileSize = this.dLedgerServer.getdLedgerConfig().getMappedFileSizeForEntryData();
+        // 二分查找文件
         MmapFile mappedFile = this.dLedgerFileList.findMappedFileByOffset(offset, offset == 0);
         if (mappedFile != null) {
             int pos = (int) (offset % mappedFileSize);
+            // 根据物理偏移量和消息大小查找文件中的消息
             return convertSbr(mappedFile.selectMappedBuffer(pos, size));
         }
         return null;

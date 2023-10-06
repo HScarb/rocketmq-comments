@@ -757,6 +757,7 @@ public class BrokerController {
                 DefaultMessageStore defaultMessageStore = new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener, this.brokerConfig);
                 defaultMessageStore.setTopicConfigTable(topicConfigManager.getTopicConfigTable());
 
+                // 如果开启主从切换（DLedger 模式），为 DLedgerLeaderElector 选主器添加角色变更监听器
                 if (messageStoreConfig.isEnableDLegerCommitLog()) {
                     DLedgerRoleChangeHandler roleChangeHandler = new DLedgerRoleChangeHandler(this, defaultMessageStore);
                     ((DLedgerCommitLog) defaultMessageStore.getCommitLog()).getdLedgerServer().getDLedgerLeaderElector().addRoleChangeHandler(roleChangeHandler);
@@ -2036,6 +2037,13 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 主从切换时服务状态切换
+     * 1. 定时消息
+     * 2. 事务状态回查
+     *
+     * @param shouldStart
+     */
     public void changeSpecialServiceStatus(boolean shouldStart) {
 
         for (BrokerAttachedPlugin brokerAttachedPlugin : brokerAttachedPlugins) {
@@ -2054,6 +2062,11 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 改变事务状态回查线程状态
+     *
+     * @param shouldStart 应该启动或者停止
+     */
     private synchronized void changeTransactionCheckServiceStatus(boolean shouldStart) {
         if (isTransactionCheckServiceStart != shouldStart) {
             LOG.info("TransactionCheckService status changed to {}", shouldStart);
@@ -2066,6 +2079,11 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 改变延迟消息服务状态
+     *
+     * @param shouldStart
+     */
     public synchronized void changeScheduleServiceStatus(boolean shouldStart) {
         if (isScheduleServiceStart != shouldStart) {
             LOG.info("ScheduleServiceStatus changed to {}", shouldStart);

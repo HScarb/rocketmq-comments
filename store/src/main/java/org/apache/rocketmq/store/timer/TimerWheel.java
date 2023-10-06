@@ -36,7 +36,13 @@ public class TimerWheel {
 
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     public static final int BLANK = -1, IGNORE = -2;
+    /**
+     * 槽位总数，默认为 604,800，为 7 天内的秒数
+     */
     public final int slotsTotal;
+    /**
+     * 定时精度，默认 1s
+     */
     public final int precisionMs;
     private String fileName;
     private final RandomAccessFile randomAccessFile;
@@ -115,6 +121,12 @@ public class TimerWheel {
         this.mappedByteBuffer.force();
     }
 
+    /**
+     * 根据时间戳获取槽位
+     *
+     * @param timeMs 时间戳
+     * @return 槽位
+     */
     public Slot getSlot(long timeMs) {
         Slot slot = getRawSlot(timeMs);
         if (slot.timeMs != timeMs / precisionMs * precisionMs) {
@@ -130,7 +142,14 @@ public class TimerWheel {
             localBuffer.get().getLong(), localBuffer.get().getLong(), localBuffer.get().getInt(), localBuffer.get().getInt());
     }
 
+    /**
+     * 根据时间戳获取槽位下标
+     *
+     * @param timeMs 时间戳
+     * @return 槽位下标
+     */
     public int getSlotIndex(long timeMs) {
+        // 时间除以精度，然后对槽位总数 * 2取余
         return (int) (timeMs / precisionMs % (slotsTotal * 2));
     }
 
