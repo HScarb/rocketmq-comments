@@ -1409,11 +1409,23 @@ public class CommitLog implements Swappable {
         }
     }
 
+    /**
+     * 同步刷盘请求
+     */
     public static class GroupCommitRequest {
+        /**
+         * 刷盘点偏移量
+         */
         private final long nextOffset;
+        /**
+         * 同步刷盘请求 Future，保存同步刷盘请求结果
+         */
         // Indicate the GroupCommitRequest result: true or false
         private final CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
         private volatile int ackNums = 1;
+        /**
+         * 同步刷盘超时时间，默认为 5s
+         */
         private final long deadLine;
 
         public GroupCommitRequest(long nextOffset, long timeoutMillis) {
@@ -1438,6 +1450,11 @@ public class CommitLog implements Swappable {
             return deadLine;
         }
 
+        /**
+         * 设置同步刷盘请求结果，结束 future
+         *
+         * @param status
+         */
         public void wakeupCustomer(final PutMessageStatus status) {
             this.flushOKFuture.complete(status);
         }
@@ -1448,13 +1465,28 @@ public class CommitLog implements Swappable {
     }
 
     /**
+     * 同步刷盘服务
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
+        /**
+         * 写请求队列，存放等待同步刷盘的请求
+         */
         private volatile LinkedList<GroupCommitRequest> requestsWrite = new LinkedList<>();
+        /**
+         * 读请求队列，用于在执行同步刷盘时与写队列交换，将读队列请求中的请求刷盘，此时写队列仍可以继续添加请求，读写分离
+         */
         private volatile LinkedList<GroupCommitRequest> requestsRead = new LinkedList<>();
+        /**
+         * 同步刷盘请求入队锁，自旋锁
+         */
         private final PutMessageSpinLock lock = new PutMessageSpinLock();
 
+        /**
+         * 将同步刷盘请求放入写请求队列
+         *
+         * @param request 同步刷盘请求
+         */
         public void putRequest(final GroupCommitRequest request) {
             lock.lock();
             try {
@@ -1462,9 +1494,13 @@ public class CommitLog implements Swappable {
             } finally {
                 lock.unlock();
             }
+            // 立刻唤醒同步刷盘服务线程
             this.wakeup();
         }
 
+        /**
+         * 读写请求队列交换
+         */
         private void swapRequests() {
             lock.lock();
             try {
@@ -1476,8 +1512,12 @@ public class CommitLog implements Swappable {
             }
         }
 
+        /**
+         * 执行同步刷盘
+         */
         private void doCommit() {
             if (!this.requestsRead.isEmpty()) {
+                // 遍历读请求队列，执行同步刷盘
                 for (GroupCommitRequest req : this.requestsRead) {
                     // There may be a message in the next file, so a maximum of
                     // two times the flush
@@ -1487,6 +1527,7 @@ public class CommitLog implements Swappable {
                         flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                     }
 
+                    // 设置刷盘请求结果
                     req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
 
@@ -1516,6 +1557,7 @@ public class CommitLog implements Swappable {
                 }
             }
 
+            // 正常关闭服务，等待 10ms，让所有同步刷盘请求保存到写队列，然后再执行一次刷盘操作
             // Under normal circumstances shutdown, wait for the arrival of the
             // request, and then flush
             try {
@@ -1641,6 +1683,9 @@ public class CommitLog implements Swappable {
             CommitLog.log.info(this.getServiceName() + " service end");
         }
 
+        /**
+         * 同步刷盘服务被唤醒时交换读写请求列表
+         */
         @Override
         protected void onWaitEnd() {
             this.swapRequests();
