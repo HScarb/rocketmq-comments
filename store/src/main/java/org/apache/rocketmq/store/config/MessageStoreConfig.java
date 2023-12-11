@@ -134,7 +134,13 @@ public class MessageStoreConfig {
     private BrokerRole brokerRole = BrokerRole.ASYNC_MASTER;
     @ImportantField
     private FlushDiskType flushDiskType = FlushDiskType.ASYNC_FLUSH;
+    /**
+     * 同步刷盘超时时间，默认 5s
+     */
     private int syncFlushTimeout = 1000 * 5;
+    /**
+     * 主从同步超时时间，默认 3s
+     */
     private int slaveTimeout = 3000;
     private String messageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h";
     private long flushDelayOffsetInterval = 1000 * 10;

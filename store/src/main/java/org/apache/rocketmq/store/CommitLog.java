@@ -761,9 +761,12 @@ public class CommitLog {
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).add(1);
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).add(result.getWroteBytes());
 
+        // 提交刷盘请求
         CompletableFuture<PutMessageStatus> flushResultFuture = submitFlushRequest(result, msg);
+        // 提交主从同步请求
         CompletableFuture<PutMessageStatus> replicaResultFuture = submitReplicaRequest(result, msg);
         return flushResultFuture.thenCombine(replicaResultFuture, (flushStatus, replicaStatus) -> {
+            // 如果刷盘失败或者主从同步失败，设置追加消息状态为失败的状态
             if (flushStatus != PutMessageStatus.PUT_OK) {
                 putMessageResult.setPutMessageStatus(flushStatus);
             }
@@ -871,7 +874,9 @@ public class CommitLog {
         storeStatsService.getSinglePutMessageTopicTimesTotal(messageExtBatch.getTopic()).add(result.getMsgNum());
         storeStatsService.getSinglePutMessageTopicSizeTotal(messageExtBatch.getTopic()).add(result.getWroteBytes());
 
+        // 提交刷盘请求
         CompletableFuture<PutMessageStatus> flushOKFuture = submitFlushRequest(result, messageExtBatch);
+        // 提交主从同步请求
         CompletableFuture<PutMessageStatus> replicaOKFuture = submitReplicaRequest(result, messageExtBatch);
         return flushOKFuture.thenCombine(replicaOKFuture, (flushStatus, replicaStatus) -> {
             if (flushStatus != PutMessageStatus.PUT_OK) {
@@ -885,7 +890,15 @@ public class CommitLog {
 
     }
 
+    /**
+     * 提交刷盘请求
+     *
+     * @param result
+     * @param messageExt
+     * @return
+     */
     public CompletableFuture<PutMessageStatus> submitFlushRequest(AppendMessageResult result, MessageExt messageExt) {
+        // 同步刷盘
         // Synchronization flush
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
@@ -893,6 +906,7 @@ public class CommitLog {
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
                         this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
                 flushDiskWatcher.add(request);
+                // 将刷盘请求放入 GroupCommitService 的请求队列中
                 service.putRequest(request);
                 return request.future();
             } else {
@@ -900,6 +914,7 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
             }
         }
+        // 异步刷盘
         // Asynchronous flush
         else {
             if (!this.defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
@@ -911,6 +926,13 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 提交主从同步请求
+     *
+     * @param result
+     * @param messageExt
+     * @return
+     */
     public CompletableFuture<PutMessageStatus> submitReplicaRequest(AppendMessageResult result, MessageExt messageExt) {
         if (BrokerRole.SYNC_MASTER == this.defaultMessageStore.getMessageStoreConfig().getBrokerRole()) {
             HAService service = this.defaultMessageStore.getHaService();
@@ -1180,9 +1202,21 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 同步刷盘请求
+     */
     public static class GroupCommitRequest {
+        /**
+         * 刷盘点偏移量
+         */
         private final long nextOffset;
+        /**
+         * 同步刷盘请求 Future，保存同步刷盘请求结果
+         */
         private CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
+        /**
+         * 同步刷盘超时时间，默认为 5s
+         */
         private final long deadLine;
 
         public GroupCommitRequest(long nextOffset, long timeoutMillis) {
@@ -1198,6 +1232,11 @@ public class CommitLog {
             return nextOffset;
         }
 
+        /**
+         * 设置同步刷盘请求结果，结束 future
+         *
+         * @param putMessageStatus
+         */
         public void wakeupCustomer(final PutMessageStatus putMessageStatus) {
             this.flushOKFuture.complete(putMessageStatus);
         }
@@ -1209,13 +1248,28 @@ public class CommitLog {
     }
 
     /**
+     * 同步刷盘服务
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
+        /**
+         * 写请求队列，存放等待同步刷盘的请求
+         */
         private volatile LinkedList<GroupCommitRequest> requestsWrite = new LinkedList<GroupCommitRequest>();
+        /**
+         * 读请求队列，用于在执行同步刷盘时与写队列交换，将读队列请求中的请求刷盘，此时写队列仍可以继续添加请求，读写分离
+         */
         private volatile LinkedList<GroupCommitRequest> requestsRead = new LinkedList<GroupCommitRequest>();
+        /**
+         * 同步刷盘请求入队锁，自旋锁
+         */
         private final PutMessageSpinLock lock = new PutMessageSpinLock();
 
+        /**
+         * 将同步刷盘请求放入写请求队列
+         *
+         * @param request 同步刷盘请求
+         */
         public synchronized void putRequest(final GroupCommitRequest request) {
             lock.lock();
             try {
@@ -1223,9 +1277,13 @@ public class CommitLog {
             } finally {
                 lock.unlock();
             }
+            // 立刻唤醒同步刷盘服务线程
             this.wakeup();
         }
 
+        /**
+         * 读写请求队列交换
+         */
         private void swapRequests() {
             lock.lock();
             try {
@@ -1237,8 +1295,12 @@ public class CommitLog {
             }
         }
 
+        /**
+         * 执行同步刷盘
+         */
         private void doCommit() {
             if (!this.requestsRead.isEmpty()) {
+                // 遍历读请求队列，执行同步刷盘
                 for (GroupCommitRequest req : this.requestsRead) {
                     // There may be a message in the next file, so a maximum of
                     // two times the flush
@@ -1248,6 +1310,7 @@ public class CommitLog {
                         flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                     }
 
+                    // 设置刷盘请求结果
                     req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
 
@@ -1276,6 +1339,7 @@ public class CommitLog {
                 }
             }
 
+            // 正常关闭服务，等待 10ms，让所有同步刷盘请求保存到写队列，然后再执行一次刷盘操作
             // Under normal circumstances shutdown, wait for the arrival of the
             // request, and then flush
             try {
@@ -1293,6 +1357,9 @@ public class CommitLog {
             CommitLog.log.info(this.getServiceName() + " service end");
         }
 
+        /**
+         * 同步刷盘服务被唤醒时交换读写请求列表
+         */
         @Override
         protected void onWaitEnd() {
             this.swapRequests();
