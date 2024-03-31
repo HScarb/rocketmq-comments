@@ -81,22 +81,31 @@ public abstract class NettyRemotingAbstract {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.ROCKETMQ_REMOTING_NAME);
 
     /**
+     * 控制 oneway 发送方式的并发度的信号量，默认为 65535
      * Semaphore to limit maximum number of on-going one-way requests, which protects system memory footprint.
      */
     protected final Semaphore semaphoreOneway;
 
     /**
+     * 控制异步发送方式的并发度的信号量，默认为 65535
      * Semaphore to limit maximum number of on-going asynchronous requests, which protects system memory footprint.
      */
     protected final Semaphore semaphoreAsync;
 
     /**
+     * 当前正在等待对端返回的请求处理表，其中 Key 是 requestId，全局唯一，采用原子递增；Value 是响应结果的 Future 对象
+     * <p>
+     * 通常套路是客户端向对端发送网络请求时，通常会采取单一长连接，发送请求后立即返回 ResponseFuture，同时将请求放入到该映射表中，
+     * 收到客户端响应时（客户端响应会包含请求 code），从该映射表中获取对应的 ResponseFuture，通知调用端的返回结果。
+     * 这里是 Future 模式在网络编程中的经典运用。
+     *
      * This map caches all on-going requests.
      */
     protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
         new ConcurrentHashMap<>(256);
 
     /**
+     * 请求码和对应的处理器的映射表，每个请求码对应一个处理器和一个线程池
      * This container holds all processors per request code, aka, for each incoming request, we may look up the
      * responding processor in this map to handle the request.
      */
@@ -120,6 +129,7 @@ public abstract class NettyRemotingAbstract {
     protected volatile SslContext sslContext;
 
     /**
+     * 注册的 RPC 钩子列表
      * custom rpc hooks
      */
     protected List<RPCHook> rpcHooks = new ArrayList<>();
@@ -177,9 +187,11 @@ public abstract class NettyRemotingAbstract {
     public void processMessageReceived(ChannelHandlerContext ctx, RemotingCommand msg) {
         if (msg != null) {
             switch (msg.getType()) {
+                // 处理对端发来的请求
                 case REQUEST_COMMAND:
                     processRequestCommand(ctx, msg);
                     break;
+                // 发出请求后，接收和处理对端的响应
                 case RESPONSE_COMMAND:
                     processResponseCommand(ctx, msg);
                     break;
@@ -256,6 +268,7 @@ public abstract class NettyRemotingAbstract {
      * @param cmd request command.
      */
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+        // 从注册过的请求处理器中根据请求码获取请求处理线程池
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessorPair : matched;
         final int opaque = cmd.getOpaque();
@@ -283,6 +296,7 @@ public abstract class NettyRemotingAbstract {
             }
         }
 
+        // 判断是否拒绝请求
         if (pair.getObject1().rejectRequest()) {
             final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                 "[REJECTREQUEST]system busy, start flow control for a while");
@@ -292,6 +306,7 @@ public abstract class NettyRemotingAbstract {
         }
 
         try {
+            // 将任务提交给请求处理线程池处理
             final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
             //async execute task, current thread return directly
             pair.getObject2().submit(requestTask);
@@ -322,6 +337,7 @@ public abstract class NettyRemotingAbstract {
             RemotingCommand response;
 
             try {
+                // Broker 处理服务器钩子函数，在服务器收到请求并解码后，处理请求前调用
                 String remoteAddr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
                 try {
                     doBeforeRpcHooks(remoteAddr, cmd);
@@ -335,12 +351,14 @@ public abstract class NettyRemotingAbstract {
                     this.requestPipeline.execute(ctx, cmd);
                 }
 
+                // 处理远程请求
                 if (exception == null) {
                     response = pair.getObject1().processRequest(ctx, cmd);
                 } else {
                     response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, null);
                 }
 
+                // Broker 处理服务器钩子函数，在处理完请求后，将结果返回
                 try {
                     doAfterRpcHooks(remoteAddr, cmd, response);
                 } catch (AbortProcessException e) {
@@ -373,6 +391,7 @@ public abstract class NettyRemotingAbstract {
     }
 
     /**
+     * 处理之前发出请求的响应，从 {@link #responseTable} 中移除对应的 {@link ResponseFuture}，并执行回调函数，设置响应结果，
      * Process response from remote peer to the previous issued requests.
      *
      * @param ctx channel handler context.
@@ -384,8 +403,10 @@ public abstract class NettyRemotingAbstract {
         if (responseFuture != null) {
             responseFuture.setResponseCommand(cmd);
 
+            // 从请求等待响应表中移除等待中的请求
             responseTable.remove(opaque);
 
+            // 执行响应结束的回调函数
             if (responseFuture.getInvokeCallback() != null) {
                 executeInvokeCallback(responseFuture);
             } else {
@@ -398,6 +419,7 @@ public abstract class NettyRemotingAbstract {
     }
 
     /**
+     * 为响应结果执行回调函数
      * Execute callback in callback executor. If callback executor is null, run directly in current thread
      */
     private void executeInvokeCallback(final ResponseFuture responseFuture) {
@@ -465,6 +487,7 @@ public abstract class NettyRemotingAbstract {
     public abstract ExecutorService getCallbackExecutor();
 
     /**
+     * 周期性扫描，移除过期的请求响应
      * <p>
      * This method is periodically invoked to scan and expire deprecated request.
      * </p>
@@ -511,6 +534,10 @@ public abstract class NettyRemotingAbstract {
         return invoke0(channel, request, timeoutMillis);
     }
 
+    /**
+     * Netty RPC 调用底层实现
+     * 使用 Netty Channel 发送请求，将响应 Future 返回，并且会放入 {@link #responseTable} 待响应请求表中
+     */
     protected CompletableFuture<ResponseFuture> invoke0(final Channel channel, final RemotingCommand request,
         final long timeoutMillis) {
         CompletableFuture<ResponseFuture> future = new CompletableFuture<>();
@@ -519,6 +546,7 @@ public abstract class NettyRemotingAbstract {
 
         boolean acquired;
         try {
+            // 获取信号量，控制并发
             acquired = this.semaphoreAsync.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (Throwable t) {
             future.completeExceptionally(t);
@@ -533,6 +561,7 @@ public abstract class NettyRemotingAbstract {
                 return future;
             }
 
+            // 创建请求的响应 Future，放入待响应请求表 responseTable
             AtomicReference<ResponseFuture> responseFutureReference = new AtomicReference<>();
             final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, request, timeoutMillis - costTime,
                 new InvokeCallback() {
@@ -552,13 +581,17 @@ public abstract class NettyRemotingAbstract {
                     }
                 }, once);
             responseFutureReference.set(responseFuture);
+            // 放入待响应请求表 responseTable
             this.responseTable.put(opaque, responseFuture);
             try {
+                // Netty Channel 写数据
                 channel.writeAndFlush(request).addListener((ChannelFutureListener) f -> {
                     if (f.isSuccess()) {
+                        // 设置请求发送成功
                         responseFuture.setSendRequestOK(true);
                         return;
                     }
+                    // 设置请求发送失败
                     requestFail(opaque);
                     log.warn("send a request command to channel <{}>, channelId={}, failed.", RemotingHelper.parseChannelRemoteAddr(channel), channel.id());
                 });
@@ -606,6 +639,12 @@ public abstract class NettyRemotingAbstract {
             });
     }
 
+    /**
+     * 设置请求失败
+     * <p>
+     * 从待响应请求表 {@link #responseTable} 中移除该 {@link ResponseFuture}，并设置状态为请求发送失败
+     * @param opaque requestId
+     */
     private void requestFail(final int opaque) {
         ResponseFuture responseFuture = responseTable.remove(opaque);
         if (responseFuture != null) {

@@ -23,6 +23,10 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Map;
 
+/**
+ * 各种配置的管理接口
+ * 可以管理一个配置文件，包含配置文件持久化的函数和重新加载配置文件到内存的函数
+ */
 public abstract class ConfigManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -31,7 +35,7 @@ public abstract class ConfigManager {
         try {
             fileName = this.configFilePath();
             String jsonString = MixAll.file2String(fileName);
-
+            // 文件不存在，或者为空文件
             if (null == jsonString || jsonString.length() == 0) {
                 return this.loadBak();
             } else {

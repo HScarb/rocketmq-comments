@@ -19,11 +19,18 @@ package org.apache.rocketmq.remoting;
 
 import org.apache.rocketmq.remoting.pipeline.RequestPipeline;
 
+/**
+ * RPC 远程服务基础接口，主要定义所有远程服务类（服务端、客户端服务）的基础方法
+ */
 public interface RemotingService {
     void start();
 
     void shutdown();
 
+    /**
+     * 注册 RPC 狗子函数，用来在执行网络操作的前后执行定制化的逻辑
+     * @param rpcHook
+     */
     void registerRPCHook(RPCHook rpcHook);
 
     void setRequestPipeline(RequestPipeline pipeline);

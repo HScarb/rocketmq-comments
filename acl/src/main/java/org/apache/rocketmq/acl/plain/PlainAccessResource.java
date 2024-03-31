@@ -33,12 +33,7 @@ import apache.rocketmq.v2.Subscription;
 import apache.rocketmq.v2.SubscriptionEntry;
 import apache.rocketmq.v2.TelemetryCommand;
 import com.google.protobuf.GeneratedMessageV3;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -65,34 +60,68 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.ConsumerData;
 import org.apache.rocketmq.remoting.protocol.heartbeat.HeartbeatData;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+import apache.rocketmq.v2.AckMessageRequest;
+import apache.rocketmq.v2.EndTransactionRequest;
+import apache.rocketmq.v2.ForwardMessageToDeadLetterQueueRequest;
+import apache.rocketmq.v2.HeartbeatRequest;
+import apache.rocketmq.v2.Message;
+import apache.rocketmq.v2.ReceiveMessageRequest;
+import apache.rocketmq.v2.Resource;
+import apache.rocketmq.v2.SendMessageRequest;
+import apache.rocketmq.v2.Subscription;
+import apache.rocketmq.v2.SubscriptionEntry;
+import apache.rocketmq.v2.TelemetryCommand;
+
+/**
+ * 访问资源（访问权限）
+ */
 public class PlainAccessResource implements AccessResource {
 
     // Identify the user
     private String accessKey;
 
+    // 用户密钥
     private String secretKey;
 
+    // 远程 IP 地址白名单
     private String whiteRemoteAddress;
 
+    // 是否管理员角色
     private boolean admin;
 
+    // 默认 Topic 的访问权限，如果没有配置 Topic 的权限，则 Topic 默认的访问权限为 1，表示 DENY
     private byte defaultTopicPerm = 1;
 
+    // 消费组默认的访问权限，默认为 DENY
     private byte defaultGroupPerm = 1;
 
+    // 资源需要的访问权限映射表
     private Map<String, Byte> resourcePermMap;
 
+    //
     private RemoteAddressStrategy remoteAddressStrategy;
 
     private int requestCode;
 
     // The content to calculate the content
+    // 请求头与具体请求体内容
     private byte[] content;
 
+    // 签名字符串
+    // 在客户端，先将请求参数排序，然后用 secretKey 生成签名字符串。在服务端重复这个步骤，然后比较签名字符串是否相同，决定登录是否成功。
     private String signature;
 
+    // 密钥令牌
     private String secretToken;
 
+    // 保留字段，目前未被使用
     private String recognition;
 
     public PlainAccessResource() {
@@ -177,6 +206,9 @@ public class PlainAccessResource implements AccessResource {
         // Content
         SortedMap<String, String> map = new TreeMap<>();
         for (Map.Entry<String, String> entry : request.getExtFields().entrySet()) {
+            // 4.9.3 版本之前，客户端计算签名时不会将 UNIQUE_MSG_QUERY_FLAG 计算在内，所以服务端计算时需要移除
+            // 4.9.4 版本以及之后，ISSUE #3906 的修改让请求的所有 extField 都参与签名计算，所以服务端计算时不再需要移除
+            // Ref: AclClientRPCHook#parseRequestContent
             if (request.getVersion() <= MQVersion.Version.V4_9_3.ordinal() &&
                     MixAll.UNIQUE_MSG_QUERY_FLAG.equals(entry.getKey())) {
                 continue;

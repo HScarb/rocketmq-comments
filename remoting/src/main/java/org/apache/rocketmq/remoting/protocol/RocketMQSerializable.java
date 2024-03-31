@@ -16,16 +16,23 @@
  */
 package org.apache.rocketmq.remoting.protocol;
 
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 
 import io.netty.buffer.ByteBuf;
 
+/**
+ * Rocketmq 序列化协议的编解码，其格式为
+ * +--------------------+-------------------+--------------+-------------+-----------+--------------------+------------------+-----------------------+----------------+----------------+-------------------+-----------------+----------------+---------------+
+ * | request code (2B)  | LanguageCode (1B) | version (2B) | opaque (4B) | flag (4B) | remark length (4B) | remark data (nB) | extFields length (4B) | key length (2B) | key data (nB) | value length (4B) | value data (nB) | ... (more key-value pairs) ... |
+ * +--------------------+-------------------+--------------+-------------+-----------+--------------------+------------------+-----------------------+----------------+----------------+-------------------+-----------------+----------------+---------------+
+ */
 public class RocketMQSerializable {
     private static final Charset CHARSET_UTF8 = StandardCharsets.UTF_8;
 

@@ -33,6 +33,10 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 和 {@link org.apache.rocketmq.store.MappedFileQueue} 类似
+ * 持有 {@link FileSegment} 的列表
+ */
 public class FlatAppendFile {
 
     protected static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -57,8 +61,12 @@ public class FlatAppendFile {
         this.recoverFileSize();
     }
 
+    /**
+     * 恢复分级存储文件内容，根据 FileSegment 元数据信息，重新创建 FileSegment 列表
+     */
     public void recover() {
         List<FileSegment> fileSegmentList = new ArrayList<>();
+        // 根据分级存储文件类型，获取对应类型的 FileSegment 元数据列表，遍历并创建 FileSegment
         this.metadataStore.iterateFileSegment(this.filePath, this.fileType, metadata -> {
             FileSegment fileSegment = this.fileSegmentFactory.createSegment(
                 this.fileType, metadata.getPath(), metadata.getBaseOffset());
@@ -96,14 +104,22 @@ public class FlatAppendFile {
         }
     }
 
+    /**
+     * 刷新元数据，然后持久化元数据到本地文件
+     *
+     * @param fileSegment 分级存储文件句柄
+     */
     public void flushFileSegmentMeta(FileSegment fileSegment) {
+        // 获取现有的 FileSegmentMetadata
         FileSegmentMetadata metadata = this.metadataStore.getFileSegment(
             this.filePath, fileSegment.getFileType(), fileSegment.getBaseOffset());
+        // 如果不存在，则创建新的 FileSegmentMetadata
         if (metadata == null) {
             metadata = new FileSegmentMetadata(
                 this.filePath, fileSegment.getBaseOffset(), fileSegment.getFileType().getCode());
             metadata.setCreateTimestamp(System.currentTimeMillis());
         }
+        // 根据 FileSegment 承载的数据类型更新 metadataStore 中的对应元数据表，持久化到本地文件
         metadata.setSize(fileSegment.getCommitPosition());
         metadata.setBeginTimestamp(fileSegment.getMinTimestamp());
         metadata.setEndTimestamp(fileSegment.getMaxTimestamp());
@@ -160,6 +176,11 @@ public class FlatAppendFile {
         return fileSegment;
     }
 
+    /**
+     * 获取最后一个 {@link FileSegment}
+     *
+     * @return
+     */
     public FileSegment getFileToWrite() {
         List<FileSegment> fileSegmentList = this.fileSegmentTable;
         if (fileSegmentList.isEmpty()) {
@@ -169,13 +190,22 @@ public class FlatAppendFile {
         }
     }
 
+    /**
+     * 提交数据到分级存储文件
+     *
+     * @param buffer
+     * @param timestamp
+     * @return
+     */
     public AppendResult append(ByteBuffer buffer, long timestamp) {
         AppendResult result;
         fileSegmentLock.writeLock().lock();
         try {
             FileSegment fileSegment = this.getFileToWrite();
+            // 提交数据到刷盘缓冲区
             result = fileSegment.append(buffer, timestamp);
             if (result == AppendResult.FILE_FULL) {
+                // 如果文件已满，执行当前文件刷盘操作，并提交到新文件缓冲区
                 boolean commitResult = fileSegment.commitAsync().join();
                 log.info("FlatAppendFile#append not successful for the file {} is full, commit result={}",
                     fileSegment.getPath(), commitResult);
@@ -192,6 +222,11 @@ public class FlatAppendFile {
         return result;
     }
 
+    /**
+     * 将最后一个 {@link FileSegment} 的提交缓冲区中的数据写入分级存储文件中
+     *
+     * @return
+     */
     public CompletableFuture<Boolean> commitAsync() {
         List<FileSegment> fileSegmentsList = this.fileSegmentTable;
         if (fileSegmentsList.isEmpty()) {
@@ -206,8 +241,16 @@ public class FlatAppendFile {
         });
     }
 
+    /**
+     * 读取数据
+     *
+     * @param offset 物理 offset
+     * @param length 数据长度
+     * @return
+     */
     public CompletableFuture<ByteBuffer> readAsync(long offset, int length) {
         List<FileSegment> fileSegmentList = this.fileSegmentTable;
+        // 从后往前遍历 FileSegment，找到包含 offset 的 FileSegment
         int index = fileSegmentList.size() - 1;
         for (; index >= 0; index--) {
             if (fileSegmentList.get(index).getBaseOffset() <= offset) {
@@ -215,14 +258,17 @@ public class FlatAppendFile {
             }
         }
 
+        // 获取 offset 所在的 FileSegment，以及它后面一个 FileSegment（如果 offset + length 跨越了两个 FileSegment）
         FileSegment fileSegment1 = fileSegmentList.get(index);
         FileSegment fileSegment2 = offset + length > fileSegment1.getCommitOffset() &&
             fileSegmentList.size() > index + 1 ? fileSegmentList.get(index + 1) : null;
 
+        // 如果没有第二个 FileSegment，直接读取第一个 FileSegment
         if (fileSegment2 == null) {
             return fileSegment1.readAsync(offset - fileSegment1.getBaseOffset(), length);
         }
 
+        // 如果有第二个 FileSegment，分别读取两个 FileSegment 的数据，然后合并
         int segment1Length = (int) (fileSegment1.getCommitOffset() - offset);
         return fileSegment1.readAsync(offset - fileSegment1.getBaseOffset(), segment1Length)
             .thenCombine(fileSegment2.readAsync(0, length - segment1Length),
@@ -243,11 +289,16 @@ public class FlatAppendFile {
         }
     }
 
+    /**
+     * 根据过期时间删除 maxTimestamp 在该时间之前的文件
+     *
+     * @param expireTimestamp 过期时间，此时间之前的文件为过期文件，可以删除
+     */
     public void destroyExpiredFile(long expireTimestamp) {
         fileSegmentLock.writeLock().lock();
         try {
             while (!fileSegmentTable.isEmpty()) {
-
+                // 从头开始遍历和删除 FileSegment，直到第一个 maxTimestamp 大于 expireTimestamp 的 FileSegment
                 // first remove expired file from fileSegmentTable
                 // then close and delete expired file
                 FileSegment fileSegment = fileSegmentTable.get(0);
@@ -263,6 +314,7 @@ public class FlatAppendFile {
                 fileSegment.destroyFile();
                 if (!fileSegment.exists()) {
                     fileSegmentTable.remove(0);
+                    // 删除 FileSegment 元数据
                     metadataStore.deleteFileSegment(filePath, fileType, fileSegment.getBaseOffset());
                 }
             }

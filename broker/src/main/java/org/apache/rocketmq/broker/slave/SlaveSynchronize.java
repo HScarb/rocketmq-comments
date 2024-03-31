@@ -36,6 +36,9 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
 import org.apache.rocketmq.store.timer.TimerCheckpoint;
 import org.apache.rocketmq.store.timer.TimerMetrics;
 
+/**
+ * Slave从Master同步元数据
+ */
 public class SlaveSynchronize {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -56,6 +59,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步所有元数据
+     */
     public void syncAll() {
         this.syncTopicConfig();
         this.syncConsumerOffset();
@@ -68,6 +74,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步Topic路由信息
+     */
     private void syncTopicConfig() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
@@ -110,12 +119,18 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步消息消费进度
+     */
     private void syncConsumerOffset() {
         String masterAddrBak = this.masterAddr;
+        // 从节点主动请求主节点，拉取信息并保存到本地
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
             try {
+                // 调用主节点 API，查询消费进度
                 ConsumerOffsetSerializeWrapper offsetWrapper =
                         this.brokerController.getBrokerOuterAPI().getAllConsumerOffset(masterAddrBak);
+                // 将消费进度保存到本地
                 this.brokerController.getConsumerOffsetManager().getOffsetTable()
                         .putAll(offsetWrapper.getOffsetTable());
                 this.brokerController.getConsumerOffsetManager().getDataVersion().assignNewOne(offsetWrapper.getDataVersion());
@@ -127,6 +142,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步延迟队列调度进度
+     */
     private void syncDelayOffset() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
@@ -152,6 +170,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步消费组信息
+     */
     private void syncSubscriptionGroupConfig() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {
@@ -178,6 +199,9 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 同步消息拉取模式
+     */
     private void syncMessageRequestMode() {
         String masterAddrBak = this.masterAddr;
         if (masterAddrBak != null && !masterAddrBak.equals(brokerController.getBrokerAddr())) {

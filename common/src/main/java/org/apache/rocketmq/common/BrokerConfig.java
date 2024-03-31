@@ -39,8 +39,10 @@ public class BrokerConfig extends BrokerIdentity {
     @ImportantField
     private int listenPort = 6888;
 
+    // 当前Broker监听的IP，默认为网卡的InetAddress
     @ImportantField
     private String brokerIP1 = NetworkUtil.getLocalAddress();
+    // 存在主从Broker时，如果在Broker主节点上配置了brokerIP2属性，Broker从节点会连接主节点配置的brokerIP2进行同步
     private String brokerIP2 = NetworkUtil.getLocalAddress();
 
     @ImportantField
@@ -59,8 +61,10 @@ public class BrokerConfig extends BrokerIdentity {
     private String messageStorePlugIn = "";
 
     private static final int PROCESSOR_NUMBER = Runtime.getRuntime().availableProcessors();
+    // 消息轨迹消息默认存储的 Topic 名称
     @ImportantField
     private String msgTraceTopicName = TopicValidator.RMQ_SYS_TRACE_TOPIC;
+    // 是否使用默认 Topic 存储消息轨迹消息，默认 Topic 为 RMQ_SYS_TRACE_TOPIC，只有 1 个队列
     @ImportantField
     private boolean traceTopicEnable = false;
     /**
@@ -118,6 +122,9 @@ public class BrokerConfig extends BrokerIdentity {
 
     private long shortPollingTimeMills = 1000;
 
+    /**
+     * Broker 级别配置，是否开启主动触发重平衡通知，当消费者组中的消费者数量发生变化时，是否主动通知所有消费者
+     */
     private boolean notifyConsumerIdsChangedEnable = true;
 
     private boolean highSpeedMode = false;
@@ -129,6 +136,14 @@ public class BrokerConfig extends BrokerIdentity {
     private boolean accountStatsEnable = true;
     private boolean accountStatsPrintZeroValues = true;
 
+    // 是否通过堆内存传输数据
+    /**
+     * 是否通过堆内存传输数据
+     * <ul>
+     *     <li>false: 通过堆外内存传输数据，相比堆内存传输减少了数据拷贝、零字节拷贝、效率更高。但发送大量消息时可能造成堆外内存分配不够，触发系统内存回收和落盘</li>
+     *     <li>true: 通过堆内存传输数据，运行更平稳</li>
+     * <ul/>
+     */
     private boolean transferMsgByHeap = true;
 
     private String regionId = MixAll.DEFAULT_TRACE_REGION_ID;
@@ -220,8 +235,10 @@ public class BrokerConfig extends BrokerIdentity {
     private boolean enableSkipLongAwaitingAck = false;
     private long reviveAckWaitMs = TimeUnit.MINUTES.toMillis(3);
     private boolean enablePopLog = false;
+    // 是否支持 CheckPoint 在内存中直接 ACK
     private boolean enablePopBufferMerge = false;
     private int popCkStayBufferTime = 10 * 1000;
+    // CheckPoint 存在于内存 Buffer 的时间
     private int popCkStayBufferTimeOut = 3 * 1000;
     private int popCkMaxBufferSize = 200000;
     private int popCkOffsetMaxQueueSize = 20000;
@@ -232,6 +249,9 @@ public class BrokerConfig extends BrokerIdentity {
     private boolean retrieveMessageFromPopRetryTopicV1 = true;
     private boolean enableRetryTopicV2 = false;
     private int popFromRetryProbability = 20;
+    /**
+     * 是否实时通知客户端消费者变化，进行重平衡。如果为 false 则定时通知，间隔为 15s
+     */
     private boolean realTimeNotifyConsumerChange = true;
 
     private boolean litePullMessageEnable = true;

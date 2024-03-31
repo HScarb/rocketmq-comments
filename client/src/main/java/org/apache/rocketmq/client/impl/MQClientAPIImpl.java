@@ -354,6 +354,21 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
         this.remotingClient.shutdown();
     }
 
+    /**
+     * 查询 Broker 重平衡分配的结果
+     *
+     * @param addr
+     * @param topic
+     * @param consumerGroup
+     * @param clientId
+     * @param strategyName
+     * @param messageModel
+     * @param timeoutMillis
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public Set<MessageQueueAssignment> queryAssignment(final String addr, final String topic,
         final String consumerGroup, final String clientId, final String strategyName,
         final MessageModel messageModel, final long timeoutMillis)
@@ -420,11 +435,22 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
         throw new MQClientException(response.getCode(), response.getRemark());
     }
 
+    /**
+     * 创建 Topic 请求调用
+     * @param addr
+     * @param defaultTopic
+     * @param topicConfig
+     * @param timeoutMillis
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     * @throws MQClientException
+     */
     public void createTopic(final String addr, final String defaultTopic, final TopicConfig topicConfig,
         final long timeoutMillis)
         throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         Validators.checkTopicConfig(topicConfig);
-
+        // 构建请求头
         CreateTopicRequestHeader requestHeader = new CreateTopicRequestHeader();
         requestHeader.setTopic(topicConfig.getTopicName());
         requestHeader.setDefaultTopic(defaultTopic);
@@ -576,6 +602,9 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
 
     }
 
+    /**
+     * 同步发送消息
+     */
     public SendResult sendMessage(
         final String addr,
         final String brokerName,
@@ -759,6 +788,23 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
         }
     }
 
+    /**
+     * 异步发送错误处理逻辑
+     *
+     * @param brokerName
+     * @param msg
+     * @param timeoutMillis
+     * @param request
+     * @param sendCallback
+     * @param topicPublishInfo
+     * @param instance
+     * @param timesTotal
+     * @param curTimes
+     * @param e
+     * @param context
+     * @param needRetry
+     * @param producer
+     */
     private void onExceptionImpl(final String brokerName,
         final Message msg,
         final long timeoutMillis,
@@ -894,6 +940,17 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
         return null;
     }
 
+    /**
+     * 异步发送 POP 消息请求
+     *
+     * @param brokerName
+     * @param addr
+     * @param requestHeader
+     * @param timeoutMillis
+     * @param popCallback
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
     public void popMessageAsync(
         final String brokerName, final String addr, final PopMessageRequestHeader requestHeader,
         final long timeoutMillis, final PopCallback popCallback
@@ -1130,6 +1187,17 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
             responseHeader.getMaxOffset(), null, responseHeader.getSuggestWhichBrokerId(), response.getBody(), responseHeader.getOffsetDelta());
     }
 
+    /**
+     * 处理 POP 消息结果
+     *
+     * @param brokerName
+     * @param response
+     * @param topic
+     * @param requestHeader
+     * @return
+     * @throws MQBrokerException
+     * @throws RemotingCommandException
+     */
     private PopResult processPopResponse(final String brokerName, final RemotingCommand response, String topic,
         CommandCustomHeader requestHeader) throws MQBrokerException, RemotingCommandException {
         PopStatus popStatus = PopStatus.NO_NEW_MSG;
@@ -1191,6 +1259,9 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
                     messageExt.getProperties().put(MessageConst.PROPERTY_POP_CK, map.get(key) + MessageConst.KEY_SEPARATOR + messageExt.getQueueOffset());
                 } else {
                     if (messageExt.getProperty(MessageConst.PROPERTY_POP_CK) == null) {
+                        // 如果不存在 POP_CK，构造 POP_CK，放入消息属性。一般情况下，只有重试消费才会在 Broker 端加上 POP_CK
+                        // 先计算消息在队列中的逻辑偏移量
+                        // 获取队列 ID key，正常 Topic 为 0@{queue_id}，Retry topic 为 1@{queue_id}
                         final String queueIdKey;
                         final String queueOffsetKey;
                         final int index;
@@ -1636,6 +1707,19 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
         return response.getCode() == ResponseCode.SUCCESS;
     }
 
+    /**
+     * 消费者将消费失败的消息发送回 Broker
+     *
+     * @param addr Broker 地址
+     * @param msg 发回的消息内容
+     * @param consumerGroup 消费组
+     * @param delayLevel 延迟等级
+     * @param timeoutMillis 超时时间
+     * @param maxConsumeRetryTimes 最大重新消费次数
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public void consumerSendMessageBack(
         final String addr,
         final String brokerName,
@@ -1670,6 +1754,17 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
         throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
     }
 
+    /**
+     * 向 Broker 发送批量锁定消息队列请求 LOCK_BATCH_MQ
+     *
+     * @param addr
+     * @param requestBody
+     * @param timeoutMillis
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public Set<MessageQueue> lockBatchMQ(
         final String addr,
         final LockBatchRequestBody requestBody,

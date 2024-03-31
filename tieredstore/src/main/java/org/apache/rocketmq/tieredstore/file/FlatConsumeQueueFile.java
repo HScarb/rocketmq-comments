@@ -19,6 +19,10 @@ package org.apache.rocketmq.tieredstore.file;
 import org.apache.rocketmq.tieredstore.common.FileSegmentType;
 import org.apache.rocketmq.tieredstore.provider.FileSegmentFactory;
 
+/**
+ * 指向 {@link FlatCommitLogFile} 偏移量的一个索引，严格连续递增
+ * 实际索引的位置会从指向 {@link org.apache.rocketmq.store.CommitLog} 的位置改为 {@link FlatCommitLogFile} 的偏移量
+ */
 public class FlatConsumeQueueFile extends FlatAppendFile {
 
     public FlatConsumeQueueFile(FileSegmentFactory fileSegmentFactory, String filePath) {

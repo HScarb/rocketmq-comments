@@ -22,6 +22,11 @@ public interface IndexFile extends IndexService {
 
     /**
      * Enumeration for the status of the index file.
+     * <ul>
+     *     <li>{@link #UNSEALED}: 初始状态，未被压缩，正被写入。类似本地 {@link org.apache.rocketmq.store.index.IndexFile} 的格式。路径为 {storePath}/tiered_index_file/{时间戳}</li>
+     *     <li>{@link #SEALED}: 已经或正在被压缩成新的 IndexFile，还未上传到二级存储。路径为{storePath}/tiered_index_file/compacting/{时间戳}</li>
+     *     <li>{@link #UPLOAD}: 已经上传到二级存储</li>
+     * </ul>
      */
     enum IndexStatusEnum {
         SHUTDOWN, UNSEALED, SEALED, UPLOAD
@@ -31,6 +36,10 @@ public interface IndexFile extends IndexService {
 
     long getEndTimestamp();
 
+    /**
+     * 获取索引文件当前的状态
+     * @return
+     */
     IndexStatusEnum getFileStatus();
 
     ByteBuffer doCompaction();

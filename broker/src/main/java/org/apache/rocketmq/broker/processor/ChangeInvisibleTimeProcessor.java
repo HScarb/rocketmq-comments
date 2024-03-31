@@ -47,6 +47,9 @@ import org.apache.rocketmq.store.exception.ConsumeQueueException;
 import org.apache.rocketmq.store.pop.AckMsg;
 import org.apache.rocketmq.store.pop.PopCheckPoint;
 
+/**
+ * 修改消息不可见时间 请求处理器
+ */
 public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
     private static final Logger POP_LOGGER = LoggerFactory.getLogger(LoggerName.ROCKETMQ_POP_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -135,12 +138,15 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
         String[] extraInfo = ExtraInfoUtil.split(requestHeader.getExtraInfo());
 
         if (ExtraInfoUtil.isOrder(extraInfo)) {
+            // 顺序消费修改不可见时间
             return CompletableFuture.completedFuture(processChangeInvisibleTimeForOrder(requestHeader, extraInfo, response, responseHeader));
         }
 
+        // 创建新的 invisible time 的 CK，并设置定时投递
         // add new ck
         long now = System.currentTimeMillis();
 
+        // 确认老的 CK
         CompletableFuture<Boolean> futureResult = appendCheckPointThenAckOrigin(requestHeader, ExtraInfoUtil.getReviveQid(extraInfo), requestHeader.getQueueId(), requestHeader.getOffset(), now, extraInfo);
         return futureResult.thenCompose(result -> {
             if (result) {
@@ -231,6 +237,17 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
         });
     }
 
+    /**
+     * 新建一个包含新 invisible time 的 CK，放到 REVIVE Topic 中
+     *
+     * @param requestHeader
+     * @param reviveQid
+     * @param queueId
+     * @param offset
+     * @param popTime
+     * @param brokerName
+     * @return 消息保存结果
+     */
     private CompletableFuture<Boolean> appendCheckPointThenAckOrigin(
         final ChangeInvisibleTimeRequestHeader requestHeader,
         int reviveQid,
@@ -256,6 +273,7 @@ public class ChangeInvisibleTimeProcessor implements NettyRequestProcessor {
         msgInner.setBornTimestamp(System.currentTimeMillis());
         msgInner.setBornHost(this.brokerController.getStoreHost());
         msgInner.setStoreHost(this.brokerController.getStoreHost());
+        // 设置消息定时投递，时间为上次 Pop 时间戳 + 不可见时长 - 1s，即：在不可见时间到期前 1s 时投递
         msgInner.setDeliverTimeMs(ck.getReviveTime() - PopAckConstants.ackTimeInterval);
         msgInner.getProperties().put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, PopMessageProcessor.genCkUniqueId(ck));
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));

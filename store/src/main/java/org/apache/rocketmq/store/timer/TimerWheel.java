@@ -29,11 +29,20 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
+/**
+ * 时间轮，用于定时消息到时
+ */
 public class TimerWheel {
 
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     public static final int BLANK = -1, IGNORE = -2;
+    /**
+     * 槽位总数，默认为 604,800，为 7 天内的秒数
+     */
     public final int slotsTotal;
+    /**
+     * 定时精度，默认 1s
+     */
     public final int precisionMs;
     private String fileName;
     private final RandomAccessFile randomAccessFile;
@@ -112,6 +121,12 @@ public class TimerWheel {
         this.mappedByteBuffer.force();
     }
 
+    /**
+     * 根据时间戳获取槽位
+     *
+     * @param timeMs 时间戳
+     * @return 槽位
+     */
     public Slot getSlot(long timeMs) {
         Slot slot = getRawSlot(timeMs);
         if (slot.timeMs != timeMs / precisionMs * precisionMs) {
@@ -127,7 +142,14 @@ public class TimerWheel {
             localBuffer.get().getLong(), localBuffer.get().getLong(), localBuffer.get().getInt(), localBuffer.get().getInt());
     }
 
+    /**
+     * 根据时间戳获取槽位下标
+     *
+     * @param timeMs 时间戳
+     * @return 槽位下标
+     */
     public int getSlotIndex(long timeMs) {
+        // 时间除以精度，然后对槽位总数 * 2取余
         return (int) (timeMs / precisionMs % (slotsTotal * 2));
     }
 
@@ -139,6 +161,16 @@ public class TimerWheel {
         localBuffer.get().putLong(firstPos);
         localBuffer.get().putLong(lastPos);
     }
+
+    /**
+     * 将 TimerLog 写入的消息放入时间轮槽
+     *
+     * @param timeMs 定时投递时间
+     * @param firstPos 该定时时间的第一条消息在 TimerLog 中的物理偏移量
+     * @param lastPos 该定时时间的最后（最新）一条消息在 TimerLog 中的物理偏移量
+     * @param num 该定时时间的消息数量
+     * @param magic
+     */
     public void putSlot(long timeMs, long firstPos, long lastPos, int num, int magic) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
         localBuffer.get().putLong(timeMs / precisionMs);

@@ -40,11 +40,16 @@ public abstract class ReferenceResource {
         return this.available;
     }
 
+    /**
+     * 尝试关闭文件，如果文件被占用（引用计数>0）则先设为不可用，且设置第一次尝试关闭的时间
+     * 后续调用时，如果时间间隔大于intervalForcibly，则可以将引用计数设为负数，此时文件可以被删除
+     */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
             this.available = false;
             this.firstShutdownTimestamp = System.currentTimeMillis();
             this.release();
+        // 强制shutdown
         } else if (this.getRefCount() > 0) {
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
                 this.refCount.set(-1000 - this.getRefCount());
@@ -53,13 +58,16 @@ public abstract class ReferenceResource {
         }
     }
 
+    /**
+     * 释放资源
+     */
     public void release() {
         long value = this.refCount.decrementAndGet();
         if (value > 0)
             return;
 
         synchronized (this) {
-
+            // cleanup内部要对是否clean做处理
             this.cleanupOver = this.cleanup(value);
         }
     }

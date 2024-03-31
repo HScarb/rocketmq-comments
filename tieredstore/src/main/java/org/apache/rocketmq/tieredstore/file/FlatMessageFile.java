@@ -17,15 +17,7 @@
 package org.apache.rocketmq.tieredstore.file;
 
 import com.alibaba.fastjson.JSON;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.BoundaryType;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -41,6 +33,20 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+/**
+ * 表示单个队列的消息文件，包含 CommitLog 和 ConsumeQueue
+ * 组合 {@link FlatCommitLogFile} 与 {@link FlatConsumeQueueFile}，并提供概念的封装
+ */
 public class FlatMessageFile implements FlatFileInterface {
 
     protected static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -57,8 +63,17 @@ public class FlatMessageFile implements FlatFileInterface {
     protected final FlatConsumeQueueFile consumeQueue;
     protected final AtomicLong lastDestroyTime;
 
+    /**
+     * CommitLog 刷盘缓冲区
+     */
     protected final List<SelectMappedBufferResult> bufferResultList;
+    /**
+     * ConsumeQueue 刷盘缓冲区
+     */
     protected final List<DispatchRequest> dispatchRequestList;
+    /**
+     * 没用
+     */
     protected final ConcurrentMap<String, CompletableFuture<?>> inFlightRequestMap;
 
     public FlatMessageFile(FlatFileFactory fileFactory, String topic, int queueId) {
@@ -96,6 +111,12 @@ public class FlatMessageFile implements FlatFileInterface {
         return !this.consumeQueue.fileSegmentTable.isEmpty();
     }
 
+    /**
+     * 新建/恢复 Topic 元数据
+     *
+     * @param topic
+     * @return
+     */
     public TopicMetadata recoverTopicMetadata(String topic) {
         TopicMetadata topicMetadata = this.metadataStore.getTopic(topic);
         if (topicMetadata == null) {
@@ -104,6 +125,13 @@ public class FlatMessageFile implements FlatFileInterface {
         return topicMetadata;
     }
 
+    /**
+     * 新建/恢复 Queue 元数据
+     *
+     * @param topic
+     * @param queueId
+     * @return
+     */
     public QueueMetadata recoverQueueMetadata(String topic, int queueId) {
         MessageQueue mq = new MessageQueue(topic, storeConfig.getBrokerName(), queueId);
         QueueMetadata queueMetadata = this.metadataStore.getQueue(mq);
@@ -113,6 +141,9 @@ public class FlatMessageFile implements FlatFileInterface {
         return queueMetadata;
     }
 
+    /**
+     * 更新队列元数据，并持久化到文件
+     */
     public void flushMetadata() {
         if (queueMetadata != null) {
             queueMetadata.setMinOffset(this.getConsumeQueueMinOffset());
@@ -181,6 +212,9 @@ public class FlatMessageFile implements FlatFileInterface {
         return dispatchRequestList;
     }
 
+    /**
+     * 刷盘成功后释放 CommitLog 缓冲区和 ConsumeQueue 分发请求缓冲区
+     */
     @Override
     public void release() {
         for (SelectMappedBufferResult bufferResult : bufferResultList) {
@@ -244,6 +278,11 @@ public class FlatMessageFile implements FlatFileInterface {
         return consumeQueue.getCommitOffset() / MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE;
     }
 
+    /**
+     * 将提交缓冲区中的数据真正提交到分级存储中
+     *
+     * @return
+     */
     @Override
     public CompletableFuture<Boolean> commitAsync() {
         return this.commitLog.commitAsync()
@@ -264,6 +303,13 @@ public class FlatMessageFile implements FlatFileInterface {
         });
     }
 
+    /**
+     * 从 CommitLog 文件组中读取消息
+     *
+     * @param offset 物理 offset
+     * @param length 消息长度
+     * @return
+     */
     @Override
     public CompletableFuture<ByteBuffer> getCommitLogAsync(long offset, int length) {
         return commitLog.readAsync(offset, length);
@@ -276,6 +322,7 @@ public class FlatMessageFile implements FlatFileInterface {
 
     @Override
     public CompletableFuture<ByteBuffer> getConsumeQueueAsync(long queueOffset, int count) {
+        // 读取 ConsumeQueue 的 FileSegment 文件，每个 ConsumeQueue 单元大小为 20 字节
         return consumeQueue.readAsync(
             queueOffset * MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE,
             count * MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE);

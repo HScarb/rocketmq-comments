@@ -24,6 +24,10 @@ import java.util.List;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.rocketmq.tieredstore.common.FileSegmentType;
 
+/**
+ * 为分级存储 {@link org.apache.rocketmq.tieredstore.provider.FileSegment} 自定义的输入流
+ * 包装了 ByteBuffer 列表，包含要写入 FileSegment 的数据
+ */
 public class FileSegmentInputStream extends InputStream {
 
     /**
@@ -101,6 +105,9 @@ public class FileSegmentInputStream extends InputStream {
         }
     }
 
+    /**
+     * 将读取位置重置到流的开始位置，同时将所有 {@link #bufferList} 的 ByteBuffer 也倒回到开始位置
+     */
     public synchronized void rewind() {
         this.readPosition = 0;
         this.curReadBufferIndex = 0;

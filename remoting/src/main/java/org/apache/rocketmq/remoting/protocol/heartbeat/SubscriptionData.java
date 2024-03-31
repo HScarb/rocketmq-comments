@@ -26,15 +26,25 @@ import java.util.Set;
 import org.apache.rocketmq.common.filter.ExpressionType;
 
 public class SubscriptionData implements Comparable<SubscriptionData> {
+    // 过滤模式，默认全匹配
     public final static String SUB_ALL = "*";
+    // 是否为类过滤模式，否则是表达式过滤模式
     private boolean classFilterMode = false;
+    // 主题
     private String topic;
+    // 过滤表达式，多个用双竖线隔开，如 "TAGA||TAGB"
     private String subString;
+    // 消息过滤标签集合，是消费端过滤时进行消息过滤的依据
     private Set<String> tagsSet = new HashSet<>();
+    // 消息过滤标签哈希码集合
     private Set<Integer> codeSet = new HashSet<>();
     private long subVersion = System.currentTimeMillis();
+    // 表达式过滤类型：TAG 或 SQL92
     private String expressionType = ExpressionType.TAG;
 
+    /**
+     * Java过滤类，通过专有的上传接口上传到Filter Server
+     */
     @JSONField(serialize = false)
     private String filterClassSource;
 

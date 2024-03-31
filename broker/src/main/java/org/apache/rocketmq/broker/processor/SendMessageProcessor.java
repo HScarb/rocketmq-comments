@@ -76,7 +76,9 @@ import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_IS_
 import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_MESSAGE_TYPE;
 import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_TOPIC;
 import static org.apache.rocketmq.remoting.protocol.RemotingCommand.buildErrorResponse;
-
+/**
+ * 处理Client发送消息的请求
+ */
 public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
 
     public SendMessageProcessor(final BrokerController brokerController) {
@@ -144,6 +146,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     }
 
     /**
+     * 如果是静态主题，将物理队列偏移量转换成逻辑队列的偏移量
      * If the response is not null, it meets some errors
      *
      * @return
@@ -238,6 +241,21 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return true;
     }
 
+    /**
+     * 处理客户端的发送消息请求
+     * 1. 检查消息合法性检查
+     * 2. 如果消息重试次数超过最大重试次数，消息将进入 DLQ 死信队列。
+     * 3. 将消息保存到存储
+     *
+     * @param ctx
+     * @param request
+     * @param sendMessageContext
+     * @param requestHeader
+     * @param mappingContext
+     * @param sendMessageCallback
+     * @return
+     * @throws RemotingCommandException
+     */
     public RemotingCommand sendMessage(final ChannelHandlerContext ctx,
         final RemotingCommand request,
         final SendMessageContext sendMessageContext,
@@ -454,11 +472,13 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         int commercialSizePerMsg = brokerController.getBrokerConfig().getCommercialSizePerMsg();
         if (sendOK) {
 
+            // 延迟消息 记录监控数据，为延迟消息的每个队列（延迟等级）记录同消息统计信息
             if (TopicValidator.RMQ_SYS_SCHEDULE_TOPIC.equals(msg.getTopic())) {
                 this.brokerController.getBrokerStatsManager().incQueuePutNums(msg.getTopic(), msg.getQueueId(), putMessageResult.getAppendMessageResult().getMsgNum(), 1);
                 this.brokerController.getBrokerStatsManager().incQueuePutSize(msg.getTopic(), msg.getQueueId(), putMessageResult.getAppendMessageResult().getWroteBytes());
             }
 
+            // 记录消息统计数据，Topic 维度和集群维度
             this.brokerController.getBrokerStatsManager().incTopicPutNums(msg.getTopic(), putMessageResult.getAppendMessageResult().getMsgNum(), 1);
             this.brokerController.getBrokerStatsManager().incTopicPutSize(msg.getTopic(),
                 putMessageResult.getAppendMessageResult().getWroteBytes());
@@ -484,6 +504,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             responseHeader.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());
             responseHeader.setTransactionId(MessageClientIDSetter.getUniqID(msg));
 
+            // 为静态主题计算返回结果
             RemotingCommand rewriteResult = rewriteResponseForStaticTopic(responseHeader, mappingContext);
             if (rewriteResult != null) {
                 return rewriteResult;

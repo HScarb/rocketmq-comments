@@ -24,6 +24,7 @@ import org.apache.rocketmq.tieredstore.metadata.entity.QueueMetadata;
 import org.apache.rocketmq.tieredstore.metadata.entity.TopicMetadata;
 
 /**
+ * 分级存储元数据存储，用于存储Topic、Queue、FileSegment等元数据信息
  * Provides tiered metadata storage service to store metadata information of Topic, Queue, FileSegment, etc.
  */
 public interface MetadataStore {

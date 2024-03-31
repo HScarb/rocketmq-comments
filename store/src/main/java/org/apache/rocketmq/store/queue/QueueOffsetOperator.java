@@ -35,10 +35,17 @@ import org.apache.rocketmq.store.exception.ConsumeQueueException;
 public class QueueOffsetOperator {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /**
+     * 队列当前逻辑偏移量
+     */
     private ConcurrentMap<String, Long> topicQueueTable = new ConcurrentHashMap<>(1024);
+    /**
+     * Batch消费队列当前逻辑偏移量
+     */
     private ConcurrentMap<String, Long> batchTopicQueueTable = new ConcurrentHashMap<>(1024);
 
     /**
+     * 轻量级队列的消费队列当前逻辑偏移量
      * {TOPIC}-{QUEUE_ID} --> NEXT Consume Queue Offset
      */
     private ConcurrentMap<String/* topic-queue-id */, Long/* offset */> lmqTopicQueueTable = new ConcurrentHashMap<>(1024);

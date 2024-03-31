@@ -32,9 +32,17 @@ public class PlainAccessValidator implements AccessValidator {
     private PlainPermissionManager aclPlugEngine;
 
     public PlainAccessValidator() {
+        // PlainPermissionManager 用作解析 plain_acl.yml 文件
         aclPlugEngine = new PlainPermissionManager();
     }
 
+    /**
+     * 从请求头中解析本次请求对应的访问权限，构建 AccessResource 对象，为后续的权限校验做准备
+     *
+     * @param request 请求对象
+     * @param remoteAddr
+     * @return
+     */
     @Override
     public AccessResource parse(RemotingCommand request, String remoteAddr) {
         return PlainAccessResource.parse(request, remoteAddr);

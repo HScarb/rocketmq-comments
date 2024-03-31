@@ -101,6 +101,13 @@ public class MessageFormatUtil {
         return cqItem.getLong(cqItem.position() + 12);
     }
 
+    /**
+     * 将一批消息的 ByteBuffer 根据 ConsumeQueue 拆分成多个 ByteBuffer
+     *
+     * @param cqBuffer 消费队列 ByteBuffer
+     * @param msgBuffer 消息 ByteBuffer
+     * @return
+     */
     public static List<SelectBufferResult> splitMessageBuffer(ByteBuffer cqBuffer, ByteBuffer msgBuffer) {
 
         if (cqBuffer == null || msgBuffer == null) {
@@ -127,9 +134,11 @@ public class MessageFormatUtil {
         try {
             long firstCommitLogOffset = MessageFormatUtil.getCommitLogOffsetFromItem(cqBuffer);
 
+            // 遍历每个 ConsumeQueue 单元
             for (int position = cqBuffer.position(); position < cqBuffer.limit();
                 position += CONSUME_QUEUE_UNIT_SIZE) {
 
+                // 解析 ConsumeQueue 单元
                 cqBuffer.position(position);
                 long logOffset = MessageFormatUtil.getCommitLogOffsetFromItem(cqBuffer);
                 int bufferSize = MessageFormatUtil.getSizeFromItem(cqBuffer);
@@ -142,6 +151,7 @@ public class MessageFormatUtil {
                     break;
                 }
 
+                // 解析 Message 的 Magic Code 并验证
                 msgBuffer.position(offset);
                 int magicCode = getMagicCode(msgBuffer);
                 if (magicCode == BLANK_MAGIC_CODE) {
@@ -162,6 +172,7 @@ public class MessageFormatUtil {
                     continue;
                 }
 
+                // 将 Message 的 ByteBuffer 切分，加入结果列表
                 ByteBuffer sliceBuffer = msgBuffer.slice();
                 sliceBuffer.limit(bufferSize);
                 bufferResultList.add(new SelectBufferResult(sliceBuffer, offset, bufferSize, tagCode));

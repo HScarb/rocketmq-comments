@@ -131,12 +131,21 @@ public class MQAdminUtils {
         }
     }
 
+    /**
+     * 向每个 Broker 发请求，创建 Static Topic
+     *
+     * @param brokerConfigMap
+     * @param defaultMQAdminExt
+     * @param force
+     * @throws Exception
+     */
     public static void updateTopicConfigMappingAll(Map<String, TopicConfigAndQueueMapping> brokerConfigMap, DefaultMQAdminExt defaultMQAdminExt, boolean force) throws Exception {
         ClientMetadata clientMetadata = getBrokerMetadata(defaultMQAdminExt);
         checkIfMasterAlive(brokerConfigMap.keySet(), defaultMQAdminExt, clientMetadata);
         //If some succeed, and others fail, it will cause inconsistent data
         for (Map.Entry<String, TopicConfigAndQueueMapping> entry : brokerConfigMap.entrySet()) {
             String broker = entry.getKey();
+            // 获取 Broker 主节点地址
             String addr = clientMetadata.findMasterBrokerAddr(broker);
             TopicConfigAndQueueMapping configMapping = entry.getValue();
             defaultMQAdminExt.createStaticTopic(addr, defaultMQAdminExt.getCreateTopicKey(), configMapping, configMapping.getMappingDetail(), force);

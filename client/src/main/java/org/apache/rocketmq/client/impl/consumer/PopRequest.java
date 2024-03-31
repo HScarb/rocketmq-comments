@@ -20,6 +20,9 @@ import org.apache.rocketmq.common.constant.ConsumeInitMode;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.message.MessageRequestMode;
 
+/**
+ * Pop 模式拉取请求
+ */
 public class PopRequest implements MessageRequest {
     private String topic;
     private String consumerGroup;

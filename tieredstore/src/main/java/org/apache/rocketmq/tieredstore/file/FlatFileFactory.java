@@ -22,6 +22,9 @@ import org.apache.rocketmq.tieredstore.common.FileSegmentType;
 import org.apache.rocketmq.tieredstore.metadata.MetadataStore;
 import org.apache.rocketmq.tieredstore.provider.FileSegmentFactory;
 
+/**
+ * FlatAppendFile 工厂，根据不同的文件类型（CommitLog/ConsumeQueue/IndexFile）创建不同的 FlatAppendFile
+ */
 public class FlatFileFactory {
 
     private final MetadataStore metadataStore;

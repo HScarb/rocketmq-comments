@@ -51,6 +51,12 @@ public class RebalancePushImpl extends RebalanceImpl {
         this.defaultMQPushConsumerImpl = defaultMQPushConsumerImpl;
     }
 
+    /**
+     * 如果消费的 MessageQueue 变化，上报心跳给 Broker，将订阅关系发送给 Broker
+     * @param topic
+     * @param mqAll
+     * @param mqDivided
+     */
     @Override
     public void messageQueueChanged(String topic, Set<MessageQueue> mqAll, Set<MessageQueue> mqDivided) {
         /*
@@ -64,14 +70,17 @@ public class RebalancePushImpl extends RebalanceImpl {
 
         int currentQueueCount = this.processQueueTable.size();
         if (currentQueueCount != 0) {
+            // Topic 维度流控，默认为 -1，即不流控
             int pullThresholdForTopic = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getPullThresholdForTopic();
             if (pullThresholdForTopic != -1) {
                 int newVal = Math.max(1, pullThresholdForTopic / currentQueueCount);
                 log.info("The pullThresholdForQueue is changed from {} to {}",
                     this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getPullThresholdForQueue(), newVal);
+                // 设置每个队列的拉取流控
                 this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().setPullThresholdForQueue(newVal);
             }
 
+            // Topic 维度拉取大小流控
             int pullThresholdSizeForTopic = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getPullThresholdSizeForTopic();
             if (pullThresholdSizeForTopic != -1) {
                 int newVal = Math.max(1, pullThresholdSizeForTopic / currentQueueCount);
@@ -90,14 +99,24 @@ public class RebalancePushImpl extends RebalanceImpl {
         }
     }
 
+    /**
+     * 将重平衡后丢弃的消费队列移除
+     * 移除前持久化消费的消费进度
+     *
+     * @param mq 消息队列
+     * @param pq 处理队列
+     * @return
+     */
     @Override
     public boolean removeUnnecessaryMessageQueue(final MessageQueue mq, final ProcessQueue pq) {
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
             && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
 
+            // 持久化消费进度，然后移除
             // commit offset immediately
             this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
 
+            // 如果是顺序消费，尝试获取队列的消费锁，最多等待 0.5s
             // remove order message queue: unlock & remove
             return tryRemoveOrderMessageQueue(mq, pq);
         } else {
@@ -112,6 +131,7 @@ public class RebalancePushImpl extends RebalanceImpl {
             // unlock & remove when no message is consuming or UNLOCK_DELAY_TIME_MILLS timeout (Backwards compatibility)
             boolean forceUnlock = pq.isDropped() && System.currentTimeMillis() > pq.getLastLockTimestamp() + UNLOCK_DELAY_TIME_MILLS;
             if (forceUnlock || pq.getConsumeLock().writeLock().tryLock(500, TimeUnit.MILLISECONDS)) {
+                // 获取队列消费锁成功，表示该队列没有消息正被消费，可以向 Broker 发请求解锁该队列
                 try {
                     RebalancePushImpl.this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
                     RebalancePushImpl.this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
@@ -125,6 +145,7 @@ public class RebalancePushImpl extends RebalanceImpl {
                     }
                 }
             } else {
+                // 增加解锁尝试次数
                 pq.incTryUnlockTimes();
             }
         } catch (Exception e) {
@@ -162,9 +183,16 @@ public class RebalancePushImpl extends RebalanceImpl {
         return result;
     }
 
+    /**
+     * 计算当前 MessageQueue 的消费进度，应该从哪里开始拉取消息
+     * @param mq
+     * @return
+     * @throws MQClientException
+     */
     @Override
     public long computePullFromWhereWithException(MessageQueue mq) throws MQClientException {
         long result = -1;
+        // 获取客户端消息拉取模式
         final ConsumeFromWhere consumeFromWhere = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getConsumeFromWhere();
         final OffsetStore offsetStore = this.defaultMQPushConsumerImpl.getOffsetStore();
         switch (consumeFromWhere) {
@@ -172,15 +200,20 @@ public class RebalancePushImpl extends RebalanceImpl {
             case CONSUME_FROM_MIN_OFFSET:
             case CONSUME_FROM_MAX_OFFSET:
             case CONSUME_FROM_LAST_OFFSET: {
+                // 从上次的消费位置开始拉取
+                // 从磁盘中读取偏移量
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
                 }
                 // First start,no offset
+                // -1 表示第一次读取数据，还没有保存偏移量
                 else if (-1 == lastOffset) {
+                    // 如果是重试 Topic，从 0 开始
                     if (mq.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         result = 0L;
                     } else {
+                        // 否则从 Broker 获取当前 MessageQueue 的最大偏移量
                         try {
                             result = this.mQClientFactory.getMQAdminImpl().maxOffset(mq);
                         } catch (MQClientException e) {
@@ -247,16 +280,28 @@ public class RebalancePushImpl extends RebalanceImpl {
         return result;
     }
 
+    /**
+     * 获取 Pop 模式拉取位点，从头或者从最大位移处开始
+     *
+     * @return 拉取位点模式
+     */
     @Override
     public int getConsumeInitMode() {
         final ConsumeFromWhere consumeFromWhere = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getConsumeFromWhere();
         if (ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET == consumeFromWhere) {
+            // 从头开始
             return ConsumeInitMode.MIN;
         } else {
+            // 从最大位移处开始
             return ConsumeInitMode.MAX;
         }
     }
 
+    /**
+     * 分发多个 MessageQueue 的拉取请求到消息拉取服务，开始拉取
+     *
+     * @param pullRequestList
+     */
     @Override
     public void dispatchPullRequest(final List<PullRequest> pullRequestList, final long delay) {
         for (PullRequest pullRequest : pullRequestList) {
@@ -268,6 +313,12 @@ public class RebalancePushImpl extends RebalanceImpl {
         }
     }
 
+    /**
+     * 将 Pop 模式拉取请求提交到拉取服务
+     *
+     * @param pullRequestList
+     * @param delay
+     */
     @Override
     public void dispatchPopPullRequest(final List<PopRequest> pullRequestList, final long delay) {
         for (PopRequest pullRequest : pullRequestList) {

@@ -71,6 +71,11 @@ public class ClientConfig {
     private String unitName;
     private boolean decodeReadBody = Boolean.parseBoolean(System.getProperty(DECODE_READ_BODY, "true"));
     private boolean decodeDecompressBody = Boolean.parseBoolean(System.getProperty(DECODE_DECOMPRESS_BODY, "true"));
+    /**
+     * 是否开启 VIP 通道，默认 false
+     * true：客户端请求 Broker 端的 fastRemotingServer（10909）
+     * false：客户端请求 Broker 端的 remotingServer（10911）
+     */
     private boolean vipChannelEnabled = Boolean.parseBoolean(System.getProperty(SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY, "false"));
     private boolean useHeartbeatV2 = Boolean.parseBoolean(System.getProperty(HEART_BEAT_V2, "false"));
 
@@ -111,6 +116,11 @@ public class ClientConfig {
      */
     protected String traceTopic;
 
+    /**
+     * 用 clientIp（本地IP）和 instanceName（DEFAULT）拼接成 clientId
+     *
+     * @return clientId，通常机器唯一，可以通过属性方式修改 instanceName
+     */
     public String buildMQClientId() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClientIP());

@@ -30,10 +30,17 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 import org.apache.rocketmq.remoting.protocol.statictopic.TopicQueueMappingInfo;
 
+/**
+ * Topic 路由信息，NameServer 返回给客户端
+ */
 public class TopicRouteData extends RemotingSerializable {
+    // 顺序消息的配置，来自 KvConfig
     private String orderTopicConf;
+    // Topic 队列元数据
     private List<QueueData> queueDatas;
+    // Topic 分布的 Broker 元数据
     private List<BrokerData> brokerDatas;
+    // Topic 上 FilterServer 的地址列表
     private HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
     //It could be null or empty
     private Map<String/*brokerName*/, TopicQueueMappingInfo> topicQueueMappingByBroker;

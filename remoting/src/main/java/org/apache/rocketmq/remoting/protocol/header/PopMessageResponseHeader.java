@@ -36,6 +36,9 @@ public class PopMessageResponseHeader implements CommandCustomHeader {
     @CFNotNull
     private long restNum;
 
+    /**
+     * Pop 的消息起始逻辑偏移量
+     */
     private String startOffsetInfo;
     private String msgOffsetInfo;
     private String orderCountInfo;

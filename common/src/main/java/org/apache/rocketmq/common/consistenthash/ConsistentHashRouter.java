@@ -30,7 +30,10 @@ import java.util.TreeMap;
  * algorithm
  */
 public class ConsistentHashRouter<T extends Node> {
-    private final SortedMap<Long, VirtualNode<T>> ring = new TreeMap<>();
+    /**
+     * 一致性哈希环
+     */
+    private final SortedMap<Long /* 哈希环位置，0~2^32-1 */, VirtualNode<T> /* 虚拟节点 */> ring = new TreeMap<>();
     private final HashFunction hashFunction;
 
     public ConsistentHashRouter(Collection<T> pNodes, int vNodeCount) {
@@ -48,6 +51,7 @@ public class ConsistentHashRouter<T extends Node> {
         }
         this.hashFunction = hashFunction;
         if (pNodes != null) {
+            // 在哈希环中为每个物理节点添加 vNodeCount 个虚拟节点
             for (T pNode : pNodes) {
                 addNode(pNode, vNodeCount);
             }
@@ -55,6 +59,7 @@ public class ConsistentHashRouter<T extends Node> {
     }
 
     /**
+     * 在哈希环中为每个物理节点添加 vNodeCount 个虚拟节点
      * add physic node to the hash ring with some virtual nodes
      *
      * @param pNode physical node needs added to hash ring
@@ -71,6 +76,7 @@ public class ConsistentHashRouter<T extends Node> {
     }
 
     /**
+     * 从哈希环中移除物理节点
      * remove the physical node from the hash ring
      */
     public void removeNode(T pNode) {
@@ -85,6 +91,7 @@ public class ConsistentHashRouter<T extends Node> {
     }
 
     /**
+     * 找到对应 key 在哈希环上顺时针最近的物理节点
      * with a specified key, route the nearest Node instance in the current hash ring
      *
      * @param objectKey the object key to find a nearest Node
@@ -99,6 +106,12 @@ public class ConsistentHashRouter<T extends Node> {
         return ring.get(nodeHashVal).getPhysicalNode();
     }
 
+    /**
+     * 获取物理节点在哈希环中已经存在的虚拟节点数量
+     *
+     * @param pNode 物理节点
+     * @return 在哈希环中已经存在的虚拟节点数量
+     */
     public int getExistingReplicas(T pNode) {
         int replicas = 0;
         for (VirtualNode<T> vNode : ring.values()) {
@@ -109,8 +122,11 @@ public class ConsistentHashRouter<T extends Node> {
         return replicas;
     }
 
+    /**
+     * 默认的一致性哈希方法，取 MD5 值的前 4 位
+     */
     //default hash function
-    private static class MD5Hash implements HashFunction {
+    public static class MD5Hash implements HashFunction {
         MessageDigest instance;
 
         public MD5Hash() {
@@ -127,6 +143,7 @@ public class ConsistentHashRouter<T extends Node> {
             byte[] digest = instance.digest();
 
             long h = 0;
+            // 取 MD5 值的前 4 位，转换成长整型
             for (int i = 0; i < 4; i++) {
                 h <<= 8;
                 h |= ((int) digest[i]) & 0xFF;

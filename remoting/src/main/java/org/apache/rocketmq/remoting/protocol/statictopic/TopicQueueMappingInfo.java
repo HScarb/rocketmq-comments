@@ -21,13 +21,25 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 逻辑队列到物理队列映射关系
+ */
 public class TopicQueueMappingInfo extends RemotingSerializable {
     public static final int LEVEL_0 = 0;
 
     String topic; // redundant field
     String scope = MixAll.METADATA_SCOPE_GLOBAL;
+    /**
+     * 当前 Broker 所拥有的逻辑队列数量
+     */
     int totalQueues;
+    /**
+     * 该数据所在的 Broker 名称
+     */
     String bname;  //identify the hosted broker name
+    /**
+     * 修改版本，用作一致性检查
+     */
     long epoch; //important to fence the old dirty data
     boolean dirty; //indicate if the data is dirty
     //register to broker to construct the route

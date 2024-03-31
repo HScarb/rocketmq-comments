@@ -19,14 +19,7 @@ package org.apache.rocketmq.tieredstore.metadata;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.google.common.annotations.VisibleForTesting;
-import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
+
 import org.apache.rocketmq.common.ConfigManager;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
@@ -36,6 +29,18 @@ import org.apache.rocketmq.tieredstore.metadata.entity.FileSegmentMetadata;
 import org.apache.rocketmq.tieredstore.metadata.entity.QueueMetadata;
 import org.apache.rocketmq.tieredstore.metadata.entity.TopicMetadata;
 
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+
+/**
+ * 分级存储元数据存储实现，用于存储 Topic、Queue、FileSegment 等元数据信息
+ */
 public class DefaultMetadataStore extends ConfigManager implements MetadataStore {
 
     private static final int DEFAULT_CAPACITY = 1024;
@@ -44,9 +49,16 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
 
     private final AtomicLong topicSequenceNumber;
     private final MessageStoreConfig storeConfig;
+    /**
+     * 分级存储 Topic 元数据、额外属性
+     */
     private final ConcurrentMap<String /* topic */, TopicMetadata> topicMetadataTable;
+    /**
+     * 分级存储 Queue 元数据、额外属性
+     */
     private final ConcurrentMap<String /* topic */, ConcurrentMap<Integer, QueueMetadata>> queueMetadataTable;
 
+    // 分级存储 FileSegment 的路径和元数据
     // Declare concurrent mapping tables to store file segment metadata
     // Key: filePath -> Value: <baseOffset, metadata>
     private final ConcurrentMap<String, ConcurrentMap<Long, FileSegmentMetadata>> commitLogFileSegmentTable;
@@ -128,6 +140,13 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
         topicMetadataTable.values().forEach(callback);
     }
 
+    /**
+     * 添加 Topic 元数据
+     *
+     * @param topic       The name of Topic.
+     * @param reserveTime The reserve time.
+     * @return
+     */
     @Override
     public TopicMetadata addTopic(String topic, long reserveTime) {
         TopicMetadata old = getTopic(topic);
@@ -140,6 +159,11 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
         return metadata;
     }
 
+    /**
+     * 更新 Topic 元数据，暂时没有用到
+     *
+     * @param topicMetadata
+     */
     @Override
     public void updateTopic(TopicMetadata topicMetadata) {
         TopicMetadata metadata = getTopic(topicMetadata.getTopic());
@@ -170,6 +194,13 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
         }
     }
 
+    /**
+     * 添加（空的）队列元数据
+     *
+     * @param mq
+     * @param baseOffset 起始偏移量，新的元数据项默认为 -1
+     * @return
+     */
     @Override
     public QueueMetadata addQueue(MessageQueue mq, long baseOffset) {
         QueueMetadata old = getQueue(mq);
@@ -183,6 +214,11 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
         return metadata;
     }
 
+    /**
+     * 更新队列元数据，持久化到文件
+     *
+     * @param metadata
+     */
     @Override
     public void updateQueue(QueueMetadata metadata) {
         MessageQueue queue = metadata.getQueue();
@@ -227,6 +263,11 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
             .map(fileMap -> fileMap.get(baseOffset)).orElse(null);
     }
 
+    /**
+     * 根据 FileSegmentMetadata 的类型，将其更新到对应的元数据表中，然后持久化到本地文件
+     *
+     * @param fileSegmentMetadata
+     */
     @Override
     public void updateFileSegment(FileSegmentMetadata fileSegmentMetadata) {
         FileSegmentType fileType =
@@ -237,6 +278,11 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
         persist();
     }
 
+    /**
+     * 遍历所有 FileSegment 的元数据，调用回调函数
+     *
+     * @param callback 回调函数
+     */
     @Override
     public void iterateFileSegment(Consumer<FileSegmentMetadata> callback) {
         commitLogFileSegmentTable
@@ -247,6 +293,13 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
             .forEach((filePath, map) -> map.forEach((offset, metadata) -> callback.accept(metadata)));
     }
 
+    /**
+     * 根据元数据类型和路径，遍历所有 FileSegment 的元数据，调用回调函数
+     *
+     * @param basePath
+     * @param fileType 元数据文件类型
+     * @param callback 回调函数
+     */
     @Override
     public void iterateFileSegment(String basePath, FileSegmentType fileType, Consumer<FileSegmentMetadata> callback) {
         this.getTableByFileType(fileType).getOrDefault(basePath, new ConcurrentHashMap<>())

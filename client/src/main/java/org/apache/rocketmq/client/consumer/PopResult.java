@@ -19,6 +19,9 @@ package org.apache.rocketmq.client.consumer;
 import java.util.List;
 import org.apache.rocketmq.common.message.MessageExt;
 
+/**
+ * POP 拉取消息结果
+ */
 public class PopResult {
     private List<MessageExt> msgFoundList;
     private PopStatus popStatus;

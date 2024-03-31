@@ -56,6 +56,7 @@ public class TopicRouteInfoManager {
         new ConcurrentHashMap<>();
     private final ConcurrentMap<String/* topic */, TopicPublishInfo> topicPublishInfoTable = new ConcurrentHashMap<>();
 
+    // Topic 订阅信息，保存 Topic 下的队列
     private final ConcurrentHashMap<String, Set<MessageQueue>> topicSubscribeInfoTable = new ConcurrentHashMap<>();
 
     private ScheduledExecutorService scheduledExecutorService;

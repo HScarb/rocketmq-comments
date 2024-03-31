@@ -31,6 +31,9 @@ public class MessageStoreExecutor {
     public final BlockingQueue<Runnable> fileRecyclingThreadPoolQueue;
 
     public final ScheduledExecutorService commonExecutor;
+    /**
+     * 分级存储消息上传线程池，将以及放入缓冲区的消息上传的分级存储
+     */
     public final ExecutorService bufferCommitExecutor;
     public final ExecutorService bufferFetchExecutor;
     public final ExecutorService fileRecyclingExecutor;

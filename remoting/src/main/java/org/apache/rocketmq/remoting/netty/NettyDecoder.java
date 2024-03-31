@@ -26,6 +26,11 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 请求解码器，基于 {@link LengthFieldBasedFrameDecoder}，
+ * 采用 Header + Body 结构，Header 部分是固定长度，并且在 Header 部分会有一个字段来标识整条消息的长度。
+ * Netty 提供了读取缓冲区并且转换为 ByteBuf 的实现，这里需要实现 ByteBuf 到 Rocketmq RemotingCommand 的解码。
+ */
 public class NettyDecoder extends LengthFieldBasedFrameDecoder {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.ROCKETMQ_REMOTING_NAME);
 

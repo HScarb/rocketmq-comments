@@ -19,17 +19,48 @@ package org.apache.rocketmq.tieredstore.index;
 
 import java.nio.ByteBuffer;
 
+/**
+ * 分级存储文件索引项，在本地 {@link org.apache.rocketmq.store.index.IndexFile} 的基础上多了 topicId、queueId、size
+ * 适配 非压缩/压缩 这两种形态
+ */
 public class IndexItem {
 
+    /**
+     * 压缩前的索引项大小
+     */
     public static final int INDEX_ITEM_SIZE = 32;
+    /**
+     * 压缩后的索引项大小
+     */
     public static final int COMPACT_INDEX_ITEM_SIZE = 28;
 
+    /**
+     * key 哈希
+     */
     private final int hashCode;
+    /**
+     * 新增，分级存储 topic ID。分级存储中，broker 为每个 topic 分配一个唯一 ID，顺序递增，存储在元数据文件中，topicMetadataTable
+     */
     private final int topicId;
+    /**
+     * 新增，分级存储 queue ID，queueMetadataTable
+     */
     private final int queueId;
+    /**
+     * 消息物理 offset
+     */
     private final long offset;
+    /**
+     * 新增，消息数据长度
+     */
     private final int size;
+    /**
+     * 消息保存时间与索引文件最早消息保存时间的差值，用于搜索时间范围内的消息
+     */
     private final int timeDiff;
+    /**
+     * 指向下一个索引项位置的指针，压缩格式下不存在
+     */
     private final int itemIndex;
 
     public IndexItem(int topicId, int queueId, long offset, int size, int hashCode, int timeDiff, int itemIndex) {

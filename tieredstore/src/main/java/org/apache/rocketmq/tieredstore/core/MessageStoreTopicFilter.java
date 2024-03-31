@@ -35,6 +35,12 @@ public class MessageStoreTopicFilter implements MessageStoreFilter {
         this.topicBlackSet.add(storeConfig.getBrokerName());
     }
 
+    /**
+     * 分级存储消息写 Topic 过滤，系统 Topic、pop revive topic、黑名单 topic、LMQ topic，这些都走本地存储
+     *
+     * @param topicName
+     * @return true: 本地存储 false: 分级存储
+     */
     @Override
     public boolean filterTopic(String topicName) {
         if (StringUtils.isBlank(topicName)) {

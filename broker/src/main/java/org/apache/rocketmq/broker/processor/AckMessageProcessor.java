@@ -49,6 +49,12 @@ import org.apache.rocketmq.store.exception.ConsumeQueueException;
 import org.apache.rocketmq.store.pop.AckMsg;
 import org.apache.rocketmq.store.pop.BatchAckMsg;
 
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+
+/**
+ * POP 消费 ACK 处理
+ */
 public class AckMessageProcessor implements NettyRequestProcessor {
     private static final Logger POP_LOGGER = LoggerFactory.getLogger(LoggerName.ROCKETMQ_POP_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -58,6 +64,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
     public AckMessageProcessor(final BrokerController brokerController) {
         this.brokerController = brokerController;
         this.reviveTopic = PopAckConstants.buildClusterReviveTopic(this.brokerController.getBrokerConfig().getBrokerClusterName());
+        // 为每个 Revive 队列创建一个 Revive 处理线程，默认 8 个
         this.popReviveServices = new PopReviveService[this.brokerController.getBrokerConfig().getReviveQueueNum()];
         for (int i = 0; i < this.brokerController.getBrokerConfig().getReviveQueueNum(); i++) {
             this.popReviveServices[i] = new PopReviveService(brokerController, reviveTopic, i);
@@ -97,6 +104,14 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         return false;
     }
 
+    /**
+     * 处理 Pop 消息 Ack 请求
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     @Override
     public RemotingCommand processRequest(final ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
@@ -108,6 +123,15 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         return false;
     }
 
+    /**
+     * 处理 Ack 消息请求，每次 Ack 一条消息
+     *
+     * @param channel
+     * @param request
+     * @param brokerAllowSuspend
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand processRequest(final Channel channel, RemotingCommand request,
         boolean brokerAllowSuspend) throws RemotingCommandException {
         AckMessageRequestHeader requestHeader;
@@ -115,8 +139,10 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         final RemotingCommand response = RemotingCommand.createResponseCommand(ResponseCode.SUCCESS, null);
         response.setOpaque(request.getOpaque());
         if (request.getCode() == RequestCode.ACK_MESSAGE) {
+            // 解析请求头
             requestHeader = (AckMessageRequestHeader) request.decodeCommandCustomHeader(AckMessageRequestHeader.class);
 
+            // 校验
             TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
             if (null == topicConfig) {
                 POP_LOGGER.error("The topic {} not exist, consumer: {} ", requestHeader.getTopic(), RemotingHelper.parseChannelRemoteAddr(channel));
@@ -182,6 +208,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         int ackCount = 0;
         if (batchAck == null) {
             // single ack
+            // 拆分消息句柄字符串
             extraInfo = ExtraInfoUtil.split(requestHeader.getExtraInfo());
             brokerName = ExtraInfoUtil.getBrokerName(extraInfo);
             consumeGroup = requestHeader.getConsumerGroup();
@@ -194,6 +221,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
             invisibleTime = ExtraInfoUtil.getInvisibleTime(extraInfo);
 
             if (rqId == KeyBuilder.POP_ORDER_REVIVE_QUEUE) {
+                // 顺序消息 ACK
                 ackOrderly(topic, consumeGroup, qId, ackOffset, popTime, invisibleTime, channel, response);
                 return;
             }
@@ -250,6 +278,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         this.brokerController.getBrokerStatsManager().incBrokerAckNums(ackCount);
         this.brokerController.getBrokerStatsManager().incGroupAckNums(consumeGroup, topic, ackCount);
 
+        // 用请求头中的信息构造 AckMsg
         ackMsg.setConsumerGroup(consumeGroup);
         ackMsg.setTopic(topic);
         ackMsg.setQueueId(qId);
@@ -263,6 +292,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
             return;
         }
 
+        // 构造 Ack 消息
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(reviveTopic);
         msgInner.setBody(JSON.toJSONString(ackMsg).getBytes(StandardCharsets.UTF_8));
@@ -277,9 +307,11 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         msgInner.setBornTimestamp(System.currentTimeMillis());
         msgInner.setBornHost(this.brokerController.getStoreHost());
         msgInner.setStoreHost(this.brokerController.getStoreHost());
+        // 定时消息，定时到唤醒重试时间投递
         msgInner.setDeliverTimeMs(popTime + invisibleTime);
         msgInner.getProperties().put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, PopMessageProcessor.genAckUniqueId(ackMsg));
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
+        // 保存 Ack 消息到磁盘
         if (brokerController.getBrokerConfig().isAppendAckAsync()) {
             int finalAckCount = ackCount;
             this.brokerController.getEscapeBridge().asyncPutMessageToSpecificQueue(msgInner).thenAccept(putMessageResult -> {
@@ -315,6 +347,7 @@ public class AckMessageProcessor implements NettyRequestProcessor {
         if (ackOffset < oldOffset) {
             return;
         }
+        // 获取 ACK 的队列的 Pop 消费锁，防止 ACK 的同时被消费
         while (!this.brokerController.getPopMessageProcessor().getQueueLockManager().tryLock(lockKey)) {
         }
         try {
@@ -328,10 +361,12 @@ public class AckMessageProcessor implements NettyRequestProcessor {
                 popTime);
             if (nextOffset > -1) {
                 if (!this.brokerController.getConsumerOffsetManager().hasOffsetReset(topic, consumeGroup, qId)) {
+                    // ACK 成功，提交消费进度
                     this.brokerController.getConsumerOffsetManager().commitOffset(
                         channel.remoteAddress().toString(), consumeGroup, topic, qId, nextOffset);
                 }
                 if (!this.brokerController.getConsumerOrderInfoManager().checkBlock(null, topic, consumeGroup, qId, invisibleTime)) {
+                    // 顺序消息 ACK 成功，立刻 POP 下一条消息
                     this.brokerController.getPopMessageProcessor().notifyMessageArriving(topic, qId, consumeGroup);
                 }
             } else if (nextOffset == -1) {

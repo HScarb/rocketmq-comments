@@ -27,6 +27,9 @@ import org.apache.rocketmq.client.trace.TraceDispatcher;
 import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.remoting.protocol.NamespaceUtil;
 
+/**
+ * 用于跟踪发送消息轨迹的钩子
+ */
 public class SendMessageTraceHookImpl implements SendMessageHook {
 
     private TraceDispatcher localDispatcher;
@@ -40,6 +43,12 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
         return "SendMessageTraceHook";
     }
 
+    /**
+     * 消息发送前调用
+     * 收集消息的基础信息，存入调用上下文
+     *
+     * @param context
+     */
     @Override
     public void sendMessageBefore(SendMessageContext context) {
         //if it is message trace data,then it doesn't recorded
@@ -63,6 +72,11 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
         traceContext.getTraceBeans().add(traceBean);
     }
 
+    /**
+     * 消息发送响应请求收到后被调用
+     *
+     * @param context
+     */
     @Override
     public void sendMessageAfter(SendMessageContext context) {
         //if it is message trace data,then it doesn't recorded
@@ -80,8 +94,10 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
             return;
         }
 
+        // 从消息发送上下文中获取 TraceBean，在发送场景，这里的数据永远只有一条
         TraceContext traceContext = (TraceContext) context.getMqTraceContext();
         TraceBean traceBean = traceContext.getTraceBeans().get(0);
+        // 计算消息发送基础数据
         int costTime = (int) ((System.currentTimeMillis() - traceContext.getTimeStamp()) / traceContext.getTraceBeans().size());
         traceContext.setCostTime(costTime);
         if (context.getSendResult().getSendStatus().equals(SendStatus.SEND_OK)) {
@@ -92,7 +108,9 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
         traceContext.setRegionId(context.getSendResult().getRegionId());
         traceBean.setMsgId(context.getSendResult().getMsgId());
         traceBean.setOffsetMsgId(context.getSendResult().getOffsetMsgId());
+        // 估算存储时间（客户端发送耗时的一半）
         traceBean.setStoreTime(traceContext.getTimeStamp() + costTime / 2);
+        // 将消息轨迹数据异步发送到 Broker
         localDispatcher.append(traceContext);
     }
 }

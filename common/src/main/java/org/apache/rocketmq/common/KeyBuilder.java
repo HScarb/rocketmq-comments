@@ -29,6 +29,14 @@ public class KeyBuilder {
         return buildPopRetryTopicV1(topic, cid);
     }
 
+    /**
+     * POP 消费重试 Topic
+     * %RETRY%{客户端ID}_{TOPIC}
+     *
+     * @param topic
+     * @param cid
+     * @return
+     */
     public static String buildPopRetryTopic(String topic, String cid) {
         return MixAll.RETRY_GROUP_TOPIC_PREFIX + cid + POP_RETRY_SEPARATOR_V1 + topic;
     }
@@ -72,6 +80,15 @@ public class KeyBuilder {
         return retryTopic.substring(MixAll.RETRY_GROUP_TOPIC_PREFIX.length());
     }
 
+    /**
+     * Pop 消费长轮询 Key
+     * TOPIC@GROUP@QUEUE_ID
+     *
+     * @param topic
+     * @param cid
+     * @param queueId
+     * @return
+     */
     public static String buildPollingKey(String topic, String cid, int queueId) {
         return topic + PopAckConstants.SPLIT + cid + PopAckConstants.SPLIT + queueId;
     }

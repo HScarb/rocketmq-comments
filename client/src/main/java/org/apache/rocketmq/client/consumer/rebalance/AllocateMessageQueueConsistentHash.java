@@ -71,6 +71,7 @@ public class AllocateMessageQueueConsistentHash extends AbstractAllocateMessageQ
 
         List<MessageQueue> results = new ArrayList<>();
         for (MessageQueue mq : mqAll) {
+            // 用队列转换的字符串做哈希，得到队列分配的客户端
             ClientNode clientNode = router.routeNode(mq.toString());
             if (clientNode != null && currentCID.equals(clientNode.getKey())) {
                 results.add(mq);

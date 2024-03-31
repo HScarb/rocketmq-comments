@@ -25,6 +25,9 @@ public class MessageStoreConfig {
 
     private String brokerName = localHostName();
     private String brokerClusterName = "DefaultCluster";
+    /**
+     * 分级存储读取策略，默认 NOT_IN_DISK，即只有在本地存储中不存在时才会读取分级存储
+     */
     private TieredStorageLevel tieredStorageLevel = TieredStorageLevel.NOT_IN_DISK;
 
     /**
@@ -34,18 +37,22 @@ public class MessageStoreConfig {
      */
     public enum TieredStorageLevel {
         /**
+         * 禁用分级存储，所有 fetch 请求都将由本地消息存储处理
          * Disable tiered storage, all fetch request will be handled by default message store.
          */
         DISABLE(0),
         /**
+         * 只有 offset 不在磁盘中的 fetch 请求才会由分级存储处理
          * Only fetch request with offset not in disk will be handled by tiered storage.
          */
         NOT_IN_DISK(1),
         /**
+         * 只有 offset 不在内存中的 fetch 请求才会由分级存储处理
          * Only fetch request with offset not in memory(page cache) will be handled by tiered storage.
          */
         NOT_IN_MEM(2),
         /**
+         * 所有 fetch 请求都将由分级存储处理
          * All fetch request will be handled by tiered storage.
          */
         FORCE(3);
@@ -85,6 +92,9 @@ public class MessageStoreConfig {
 
     private String storePathRootDir = System.getProperty("user.home") + File.separator + "store";
     private boolean messageIndexEnable = true;
+    /**
+     * 是否将 fetch 消息结果在日志中打印
+     */
     private boolean recordGetMessageResult = false;
 
     // CommitLog file size, default is 1G
@@ -94,7 +104,13 @@ public class MessageStoreConfig {
     private int tieredStoreIndexFileMaxHashSlotNum = 5000000;
     private int tieredStoreIndexFileMaxIndexNum = 5000000 * 4;
 
+    /**
+     * 分级存储元数据存储实现
+     */
     private String tieredMetadataServiceProvider = "org.apache.rocketmq.tieredstore.metadata.DefaultMetadataStore";
+    /**
+     * 分级存储数据存储实现
+     */
     private String tieredBackendServiceProvider = "org.apache.rocketmq.tieredstore.provider.MemoryFileSegment";
 
     // file reserved time, default is 72 hour
@@ -107,20 +123,50 @@ public class MessageStoreConfig {
     private int commitLogRollingMinimumSize = 16 * 1024 * 1024;
 
     private boolean tieredStoreGroupCommit = true;
+    /**
+     * 消息刷盘到分级存储的超时时间，默认 30s
+     */
     private int tieredStoreGroupCommitTimeout = 30 * 1000;
+    /**
+     * 分级存储刷盘的缓冲区消息数量阈值，单个队列缓冲区中的消息超过该值会触发刷盘
+     */
     // Cached message count larger than this value will trigger async commit. default is 4096
     private int tieredStoreGroupCommitCount = 4 * 1024;
+    /**
+     * 分级存储刷盘的缓冲区大小阈值，单个队列缓冲区中消息大小超过该值会触发刷盘
+     */
     // Cached message size larger than this value will trigger async commit. default is 4M
     private int tieredStoreGroupCommitSize = 4 * 1024 * 1024;
+    /**
+     * 分级存储单次写入缓冲区的最大消息数量，默认 10000
+     */
     // Cached message count larger than this value will suspend append. default is 10000
     private int tieredStoreMaxGroupCommitCount = 10000;
 
+    /**
+     * 从分级存储读取时是否启用预读缓存
+     */
     private boolean readAheadCacheEnable = true;
+    /**
+     * 从分级存储时每次读取消息数量阈值
+     */
     private int readAheadMessageCountThreshold = 4096;
+    /**
+     * 从分级存储中每次读取消息的长度阈值
+     */
     private int readAheadMessageSizeThreshold = 16 * 1024 * 1024;
+    /**
+     * 预读缓存过期时间，默认 15s
+     */
     private long readAheadCacheExpireDuration = 15 * 1000;
+    /**
+     *  最大预读缓存大小，为 JVM 最大内存的一定比例，默认 30%
+     */
     private double readAheadCacheSizeThresholdRate = 0.3;
 
+    /**
+     * 分级存储写文件最大同时写文件数量
+     */
     private int tieredStoreMaxPendingLimit = 10000;
     private boolean tieredStoreCrcCheckEnable = false;
 
