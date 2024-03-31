@@ -512,17 +512,25 @@ public class ConsumeQueueStore extends AbstractConsumeQueueStore {
         }
     }
 
+    /**
+     * 清理过期的 Topic
+     *
+     * @param minCommitLogOffset CommitLog 中存储的最小物理偏移量
+     */
     @Override
     public void cleanExpired(long minCommitLogOffset) {
         Iterator<Entry<String, ConcurrentMap<Integer, ConsumeQueueInterface>>> it = this.consumeQueueTable.entrySet().iterator();
+        // 遍历 Topic
         while (it.hasNext()) {
             Map.Entry<String, ConcurrentMap<Integer, ConsumeQueueInterface>> next = it.next();
             String topic = next.getKey();
             if (!TopicValidator.isSystemTopic(topic)) {
                 ConcurrentMap<Integer, ConsumeQueueInterface> queueTable = next.getValue();
                 Iterator<Map.Entry<Integer, ConsumeQueueInterface>> itQT = queueTable.entrySet().iterator();
+                // 遍历所有队列
                 while (itQT.hasNext()) {
                     Map.Entry<Integer, ConsumeQueueInterface> nextQT = itQT.next();
+                    // 队列中消息最大的物理偏移量
                     long maxCLOffsetInConsumeQueue = nextQT.getValue().getLastOffset();
 
                     if (maxCLOffsetInConsumeQueue == -1) {
@@ -532,6 +540,7 @@ public class ConsumeQueueStore extends AbstractConsumeQueueStore {
                             nextQT.getValue().getMaxPhysicOffset(),
                             nextQT.getValue().getMinLogicOffset());
                     } else if (maxCLOffsetInConsumeQueue < minCommitLogOffset) {
+                        // 队列中消息最大物理偏移量小于当前 CommitLog 中最小物理偏移量，说明该队列中的消息已经过期，可以删除
                         log.info(
                             "cleanExpiredConsumerQueue: {} {} consumer queue destroyed, minCommitLogOffset: {} maxCLOffsetInConsumeQueue: {}",
                             topic,
@@ -539,9 +548,11 @@ public class ConsumeQueueStore extends AbstractConsumeQueueStore {
                             minCommitLogOffset,
                             maxCLOffsetInConsumeQueue);
 
+                        // 从 QueueOffsetAssigner 中移除队列信息
                         removeTopicQueueTable(nextQT.getValue().getTopic(),
                             nextQT.getValue().getQueueId());
 
+                        // 删除队列文件
                         this.destroy(nextQT.getValue());
                         itQT.remove();
                     }

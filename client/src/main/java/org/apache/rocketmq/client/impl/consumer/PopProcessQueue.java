@@ -21,6 +21,7 @@ import org.apache.rocketmq.remoting.protocol.body.PopProcessQueueInfo;
 
 /**
  * Queue consumption snapshot
+ * Pop 模式拉取处理队列
  */
 public class PopProcessQueue {
 

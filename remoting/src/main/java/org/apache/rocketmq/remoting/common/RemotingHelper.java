@@ -194,6 +194,12 @@ public class RemotingHelper {
         }
     }
 
+    /**
+     * 获取远端地址
+     *
+     * @param channel netty channel，代表一个 HTTP 连接
+     * @return
+     */
     public static String parseChannelRemoteAddr(final Channel channel) {
         if (null == channel) {
             return "";
@@ -202,6 +208,7 @@ public class RemotingHelper {
         if (StringUtils.isNotBlank(addr)) {
             return addr;
         }
+        // 尝试从缓存中直接获取，获取不到则从 channel 中获取然后拼接，放入缓存，最后返回
         Attribute<String> att = channel.attr(AttributeKeys.REMOTE_ADDR_KEY);
         if (att == null) {
             // mocked in unit test

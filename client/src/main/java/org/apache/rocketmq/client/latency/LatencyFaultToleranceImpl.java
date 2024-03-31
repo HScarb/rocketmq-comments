@@ -99,8 +99,10 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
     @Override
     public void updateFaultItem(final String name, final long currentLatency, final long notAvailableDuration,
                                 final boolean reachable) {
+        // 尝试从缓存中获取 FaultItem
         FaultItem old = this.faultItemTable.get(name);
         if (null == old) {
+            // 如果没有找到，则创建新的 FaultItem
             final FaultItem faultItem = new FaultItem(name);
             faultItem.setCurrentLatency(currentLatency);
             faultItem.updateNotAvailableDuration(notAvailableDuration);
@@ -109,6 +111,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         }
 
         if (null != old) {
+            // 如果缓存中有，则更新缓存中的 FaultItem
             old.setCurrentLatency(currentLatency);
             old.updateNotAvailableDuration(notAvailableDuration);
             old.setReachable(reachable);
@@ -119,6 +122,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isAvailable(final String name) {
         final FaultItem faultItem = this.faultItemTable.get(name);
@@ -188,6 +194,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
     public class FaultItem implements Comparable<FaultItem> {
         private final String name;
         private volatile long currentLatency;
+        // 需要规避到该时间戳（可以启用的时间戳）
         private volatile long startTimestamp;
         private volatile long checkStamp;
         private volatile boolean reachableFlag;

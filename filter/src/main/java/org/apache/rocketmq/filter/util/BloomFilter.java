@@ -82,6 +82,7 @@ public class BloomFilter {
     }
 
     /**
+     * 计算给定字符串的哈希值，进行 k 次哈希，返回一个 int 数组，数组中的每个值是位的位置。
      * Calculate bit positions of {@code str}.
      * <p>
      * See "Less Hashing, Same Performance: Building a Better Bloom Filter" by Adam Kirsch and Michael

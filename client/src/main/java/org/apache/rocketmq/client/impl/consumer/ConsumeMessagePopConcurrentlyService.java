@@ -173,6 +173,13 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * 提交 POP 消费任务给消费线程池
+     *
+     * @param msgs
+     * @param processQueue
+     * @param messageQueue
+     */
     @Override
     public void submitPopConsumeRequest(
         final List<MessageExt> msgs,
@@ -180,6 +187,7 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
         final MessageQueue messageQueue) {
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
         if (msgs.size() <= consumeBatchSize) {
+            // 拉取到的消息数量小于一批消息的数量，全部包装成一个消费任务，提交
             ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
             try {
                 this.consumeExecutor.submit(consumeRequest);
@@ -187,6 +195,7 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
                 this.submitConsumeRequestLater(consumeRequest);
             }
         } else {
+            // 分批提交消费任务
             for (int total = 0; total < msgs.size(); ) {
                 List<MessageExt> msgThis = new ArrayList<>(consumeBatchSize);
                 for (int i = 0; i < consumeBatchSize; i++, total++) {
@@ -253,6 +262,7 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
             MessageExt msgExt = consumeRequest.getMsgs().get(i);
             consumeRequest.getPopProcessQueue().ack();
             if (msgExt.getReconsumeTimes() >= this.defaultMQPushConsumerImpl.getMaxReconsumeTimes()) {
+                // 超过最大重试次数（默认 16），判断是否要直接 Ack
                 checkNeedAckOrDelay(msgExt);
                 continue;
             }
@@ -262,10 +272,15 @@ public class ConsumeMessagePopConcurrentlyService implements ConsumeMessageServi
         }
     }
 
+    /**
+     * 检查是否超过 2 倍的最大重试时间：超过则 Ack；否则修改不可见时间，延迟重试
+     * @param msgExt
+     */
     private void checkNeedAckOrDelay(MessageExt msgExt) {
         int[] delayLevelTable = this.defaultMQPushConsumerImpl.getPopDelayLevel();
 
         long msgDelaytime = System.currentTimeMillis() - msgExt.getBornTimestamp();
+        // 检查总重试耗时是否超过 2 倍最大重试时间
         if (msgDelaytime > delayLevelTable[delayLevelTable.length - 1] * 1000 * 2) {
             log.warn("Consume too many times, ack message async. message {}", msgExt.toString());
             this.defaultMQPushConsumerImpl.ackAsync(msgExt, consumerGroup);

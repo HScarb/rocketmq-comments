@@ -18,6 +18,9 @@ package org.apache.rocketmq.store.pop;
 
 import com.alibaba.fastjson.annotation.JSONField;
 
+/**
+ * POP 消费 ACK 消息
+ */
 public class AckMsg {
 
     @JSONField(name = "ao", alternateNames = {"ackOffset"})

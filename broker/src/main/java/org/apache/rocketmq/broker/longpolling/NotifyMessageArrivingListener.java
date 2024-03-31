@@ -22,6 +22,9 @@ import org.apache.rocketmq.broker.processor.NotificationProcessor;
 import org.apache.rocketmq.broker.processor.PopMessageProcessor;
 import org.apache.rocketmq.store.MessageArrivingListener;
 
+/**
+ * 新消息到达监听器实现
+ */
 public class NotifyMessageArrivingListener implements MessageArrivingListener {
     private final PullRequestHoldService pullRequestHoldService;
     private final PopMessageProcessor popMessageProcessor;
@@ -36,8 +39,10 @@ public class NotifyMessageArrivingListener implements MessageArrivingListener {
     @Override
     public void arriving(String topic, int queueId, long logicOffset, long tagsCode,
                          long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
+        // 提醒长轮询请求管理容器，新的消息到达，立刻拉取最新消息
         this.pullRequestHoldService.notifyMessageArriving(topic, queueId, logicOffset, tagsCode,
             msgStoreTime, filterBitMap, properties);
+        // 提醒 Pop 消息处理器，有新消息到达
         this.popMessageProcessor.notifyMessageArriving(topic, queueId);
         this.notificationProcessor.notifyMessageArriving(topic, queueId);
     }

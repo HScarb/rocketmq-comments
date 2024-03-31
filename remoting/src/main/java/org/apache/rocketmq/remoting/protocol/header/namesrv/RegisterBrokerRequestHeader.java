@@ -30,6 +30,9 @@ import org.apache.rocketmq.remoting.annotation.CFNullable;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.protocol.RequestCode;
 
+/**
+ * Broker 向 NameServer 发送的心跳包的请求头
+ */
 @RocketMQAction(value = RequestCode.REGISTER_BROKER, resource = ResourceType.CLUSTER, action = Action.UPDATE)
 public class RegisterBrokerRequestHeader implements CommandCustomHeader {
     @CFNotNull

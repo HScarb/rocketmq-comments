@@ -17,6 +17,7 @@
 package org.apache.rocketmq.store.timer;
 
 /**
+ * 时间轮槽位，表示某一时刻要投递的定时消息的索引
  * Represents a slot of timing wheel. Format:
  * ┌────────────┬───────────┬───────────┬───────────┬───────────┐
  * │delayed time│ first pos │ last pos  │    num    │   magic   │
@@ -26,9 +27,21 @@ package org.apache.rocketmq.store.timer;
  */
 public class Slot {
     public static final short SIZE = 32;
+    /**
+     * 定时时间戳
+     */
     public final long timeMs; //delayed time
+    /**
+     * TimerLog 中该时刻定时消息链表的第一个消息的物理偏移量（链表尾）
+     */
     public final long firstPos;
+    /**
+     * TimerLog 中该时刻定时消息链表的最后一个消息的物理偏移量（链表头）
+     */
     public final long lastPos;
+    /**
+     * 该时刻定时消息条数
+     */
     public final int num;
     public final int magic; //no use now, just keep it
 

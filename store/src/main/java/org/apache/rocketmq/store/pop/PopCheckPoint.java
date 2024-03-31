@@ -20,6 +20,9 @@ import com.alibaba.fastjson.annotation.JSONField;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Pop 消费消息句柄，拉取后在 Broker 端添加，用于和 Ack 的句柄匹配
+ */
 public class PopCheckPoint implements Comparable<PopCheckPoint> {
     @JSONField(name = "so")
     private long startOffset;
@@ -76,6 +79,10 @@ public class PopCheckPoint implements Comparable<PopCheckPoint> {
         return invisibleTime;
     }
 
+    /**
+     * 可以被重新消费（Pop）的时间戳
+     * = 上次 Pop 时间戳 + 不可见时长
+     */
     public long getReviveTime() {
         return popTime + invisibleTime;
     }
@@ -143,6 +150,12 @@ public class PopCheckPoint implements Comparable<PopCheckPoint> {
         this.queueOffsetDiff.add(diff);
     }
 
+    /**
+     * 获取 CheckPoint 中 Ack 消息所对应的消息的下标
+     *
+     * @param ackOffset Ack 消息逻辑偏移量
+     * @return Ack 消息所对应的消息句柄在 CheckPoint 中的下标
+     */
     public int indexOfAck(long ackOffset) {
         if (ackOffset < startOffset) {
             return -1;

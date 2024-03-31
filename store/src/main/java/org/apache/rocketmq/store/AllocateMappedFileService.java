@@ -35,6 +35,8 @@ import org.apache.rocketmq.store.logfile.MappedFile;
 
 /**
  * Create MappedFile in advance
+ * 预创建MappedFile异步线程
+ * 每次都预创建一个文件来减少文件创建延迟，通过文件预热避免了读写时缺页异常
  */
 public class AllocateMappedFileService extends ServiceThread {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -50,7 +52,17 @@ public class AllocateMappedFileService extends ServiceThread {
         this.messageStore = messageStore;
     }
 
+    /**
+     * 预创建文件
+     * 消息写入时调用，往 requestQueue 放入提交创建 MappedFile 请求，会同时构建两个 AllocateRequest 放入队列。
+     *
+     * @param nextFilePath 下一个文件路径
+     * @param nextNextFilePath 下下一个 文件路径
+     * @param fileSize 文件大小
+     * @return
+     */
     public MappedFile putRequestAndReturnMappedFile(String nextFilePath, String nextNextFilePath, int fileSize) {
+        // 最多创建 2 个 MappedFile
         int canSubmitRequests = 2;
         if (this.messageStore.isTransientStorePoolEnable()) {
             if (this.messageStore.getMessageStoreConfig().isFastFailIfNoBufferInStorePool()
@@ -59,6 +71,7 @@ public class AllocateMappedFileService extends ServiceThread {
             }
         }
 
+        // 创建第一个 MappedFile 预分配请求放入队列
         AllocateRequest nextReq = new AllocateRequest(nextFilePath, fileSize);
         boolean nextPutOK = this.requestTable.putIfAbsent(nextFilePath, nextReq) == null;
 
@@ -76,6 +89,7 @@ public class AllocateMappedFileService extends ServiceThread {
             canSubmitRequests--;
         }
 
+        // 创建第二个 MappedFile 预分配请求放入队列
         AllocateRequest nextNextReq = new AllocateRequest(nextNextFilePath, fileSize);
         boolean nextNextPutOK = this.requestTable.putIfAbsent(nextNextFilePath, nextNextReq) == null;
         if (nextNextPutOK) {
@@ -96,10 +110,12 @@ public class AllocateMappedFileService extends ServiceThread {
             return null;
         }
 
+        // 获取本次创建第一个 MappedFile 的创建请求
         AllocateRequest result = this.requestTable.get(nextFilePath);
         try {
             if (result != null) {
                 messageStore.getPerfCounter().startTick("WAIT_MAPFILE_TIME_MS");
+                // 通过 CountDownLatch 等待第一个 MappedFile 创建成功，返回该文件
                 boolean waitOK = result.getCountDownLatch().await(waitTimeOut, TimeUnit.MILLISECONDS);
                 messageStore.getPerfCounter().endTick("WAIT_MAPFILE_TIME_MS");
                 if (!waitOK) {
@@ -154,6 +170,7 @@ public class AllocateMappedFileService extends ServiceThread {
         boolean isSuccess = false;
         AllocateRequest req = null;
         try {
+            // 从队列中获取预分配请求
             req = this.requestQueue.take();
             AllocateRequest expectedRequest = this.requestTable.get(req.getFilePath());
             if (null == expectedRequest) {
@@ -171,11 +188,14 @@ public class AllocateMappedFileService extends ServiceThread {
                 long beginTime = System.currentTimeMillis();
 
                 MappedFile mappedFile;
+                // 是否启用堆外内存，对消息内存级别的做读写分离
                 if (messageStore.isTransientStorePoolEnable()) {
                     try {
+                        // 启用堆外内存的 MappedFile
                         mappedFile = ServiceLoader.load(MappedFile.class).iterator().next();
                         mappedFile.init(req.getFilePath(), req.getFileSize(), messageStore.getTransientStorePool());
                     } catch (RuntimeException e) {
+                        // 普通 MappedFile
                         log.warn("Use default implementation.");
                         mappedFile = new DefaultMappedFile(req.getFilePath(), req.getFileSize(), messageStore.getTransientStorePool());
                     }
@@ -191,6 +211,7 @@ public class AllocateMappedFileService extends ServiceThread {
                 }
 
                 // pre write mappedFile
+                // 预热 MappedFile
                 if (mappedFile.getFileSize() >= this.messageStore.getMessageStoreConfig()
                     .getMappedFileSizeCommitLog()
                     &&
@@ -224,6 +245,9 @@ public class AllocateMappedFileService extends ServiceThread {
         return true;
     }
 
+    /**
+     * MappedFile 预分配请求
+     */
     static class AllocateRequest implements Comparable<AllocateRequest> {
         // Full file path
         private String filePath;

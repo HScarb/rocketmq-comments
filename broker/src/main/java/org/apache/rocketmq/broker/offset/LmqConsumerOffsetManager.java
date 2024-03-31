@@ -25,8 +25,14 @@ import org.apache.rocketmq.broker.BrokerPathConfigHelper;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 支持轻量级队列的消费进度管理器
+ */
 public class LmqConsumerOffsetManager extends ConsumerOffsetManager {
-    private ConcurrentHashMap<String, Long> lmqOffsetTable = new ConcurrentHashMap<>(512);
+    /**
+     * 轻量级队列消费进度表
+     */
+    private ConcurrentHashMap<String/* topic@group */, Long> lmqOffsetTable = new ConcurrentHashMap<>(512);
 
     public LmqConsumerOffsetManager() {
 

@@ -55,8 +55,9 @@ public class NamesrvController {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private static final Logger WATER_MARK_LOG = LoggerFactory.getLogger(LoggerName.NAMESRV_WATER_MARK_LOGGER_NAME);
 
+    // Name server 配置
     private final NamesrvConfig namesrvConfig;
-
+    // 通信层配置
     private final NettyServerConfig nettyServerConfig;
     private final NettyClientConfig nettyClientConfig;
 
@@ -66,14 +67,16 @@ public class NamesrvController {
     private final ScheduledExecutorService scanExecutorService = ThreadUtils.newScheduledThreadPool(1,
             new BasicThreadFactory.Builder().namingPattern("NSScanScheduledThread").daemon(true).build());
 
+    // 核心数据结构
     private final KVConfigManager kvConfigManager;
     private final RouteInfoManager routeInfoManager;
 
     private RemotingClient remotingClient;
+    // 服务端通信对象
     private RemotingServer remotingServer;
-
+    // 用于接收 Broker 连接事件
     private final BrokerHousekeepingService brokerHousekeepingService;
-
+    // 服务端网络请求处理线程池
     private ExecutorService defaultExecutor;
     private ExecutorService clientRequestExecutor;
 
@@ -99,10 +102,14 @@ public class NamesrvController {
     }
 
     public boolean initialize() {
+        // 加载 KV 配置
         loadConfig();
+        // 初始化通信层
         initiateNetworkComponents();
+        // 初始化线程池
         initiateThreadExecutors();
         registerProcessor();
+        // 启动定时任务
         startScheduleService();
         initiateSslContext();
         initiateRpcHooks();
@@ -110,13 +117,16 @@ public class NamesrvController {
     }
 
     private void loadConfig() {
+        // 加载 KV 配置
         this.kvConfigManager.load();
     }
 
     private void startScheduleService() {
+        // 增加定时任务，每 10s 扫描一次 Broker，移除未激活状态的 Broker
         this.scanExecutorService.scheduleAtFixedRate(NamesrvController.this.routeInfoManager::scanNotActiveBroker,
             5, this.namesrvConfig.getScanNotActiveBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // 增加定时任务，每 10min 打印一次 KV 配置
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.kvConfigManager::printAllPeriodically,
             1, 10, TimeUnit.MINUTES);
 

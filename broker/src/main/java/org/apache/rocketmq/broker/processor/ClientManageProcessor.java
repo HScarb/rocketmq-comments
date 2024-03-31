@@ -59,8 +59,10 @@ public class ClientManageProcessor implements NettyRequestProcessor {
         throws RemotingCommandException {
         switch (request.getCode()) {
             case RequestCode.HEART_BEAT:
+                // 消费者客户端心跳处理
                 return this.heartBeat(ctx, request);
             case RequestCode.UNREGISTER_CLIENT:
+                // 客户端注销处理
                 return this.unregisterClient(ctx, request);
             case RequestCode.CHECK_CLIENT_CONFIG:
                 return this.checkClientConfig(ctx, request);
@@ -75,6 +77,13 @@ public class ClientManageProcessor implements NettyRequestProcessor {
         return false;
     }
 
+    /**
+     * 处理消费者客户端上报的心跳请求
+     *
+     * @param ctx
+     * @param request
+     * @return
+     */
     public RemotingCommand heartBeat(ChannelHandlerContext ctx, RemotingCommand request) {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         HeartbeatData heartbeatData = HeartbeatData.decode(request.getBody(), HeartbeatData.class);
@@ -105,6 +114,7 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 }
             }
 
+            // 查询消费组订阅关系
             SubscriptionGroupConfig subscriptionGroupConfig = this.brokerController.getSubscriptionGroupManager()
                 .findSubscriptionGroupConfig(consumerData.getGroupName());
             boolean isNotifyConsumerIdsChangedEnable = true;
@@ -113,15 +123,18 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 continue;
             }
 
+            // 如果不存在（新消费组上线），为其创建重试 Topic
             isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
             int topicSysFlag = 0;
             if (consumerData.isUnitMode()) {
                 topicSysFlag = TopicSysFlag.buildSysFlag(false, true);
             }
             String newTopic = MixAll.getRetryTopic(consumerData.getGroupName());
+            // 创建消费者发回消息重试消费的 Topic
             this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic, subscriptionGroupConfig.getRetryQueueNums(),
                 PermName.PERM_WRITE | PermName.PERM_READ, hasOrderTopicSub, topicSysFlag);
 
+            // 注册消费者到消费者信息 Map
             boolean changed = this.brokerController.getConsumerManager().registerConsumer(
                 consumerData.getGroupName(),
                 clientChannelInfo,

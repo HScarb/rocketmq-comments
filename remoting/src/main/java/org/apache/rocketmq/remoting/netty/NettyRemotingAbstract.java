@@ -256,6 +256,7 @@ public abstract class NettyRemotingAbstract {
      * @param cmd request command.
      */
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+        // 从注册过的请求处理器中根据请求码获取请求处理线程池
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessorPair : matched;
         final int opaque = cmd.getOpaque();
@@ -282,6 +283,7 @@ public abstract class NettyRemotingAbstract {
             }
         }
 
+        // 判断是否拒绝请求
         if (pair.getObject1().rejectRequest()) {
             final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                 "[REJECTREQUEST]system busy, start flow control for a while");
@@ -291,6 +293,7 @@ public abstract class NettyRemotingAbstract {
         }
 
         try {
+            // 将任务提交给请求处理线程池处理
             final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
             //async execute task, current thread return directly
             pair.getObject2().submit(requestTask);
@@ -321,6 +324,7 @@ public abstract class NettyRemotingAbstract {
             RemotingCommand response;
 
             try {
+                // Broker 处理服务器钩子函数，在服务器收到请求并解码后，处理请求前调用
                 String remoteAddr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
                 try {
                     doBeforeRpcHooks(remoteAddr, cmd);
@@ -334,12 +338,14 @@ public abstract class NettyRemotingAbstract {
                     this.requestPipeline.execute(ctx, cmd);
                 }
 
+                // 处理远程请求
                 if (exception == null) {
                     response = pair.getObject1().processRequest(ctx, cmd);
                 } else {
                     response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, null);
                 }
 
+                // Broker 处理服务器钩子函数，在处理完请求后，将结果返回
                 try {
                     doAfterRpcHooks(remoteAddr, cmd, response);
                 } catch (AbortProcessException e) {

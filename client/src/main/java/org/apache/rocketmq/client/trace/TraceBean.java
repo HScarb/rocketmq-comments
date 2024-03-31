@@ -24,14 +24,20 @@ public class TraceBean {
     private static final String LOCAL_ADDRESS = UtilAll.ipToIPv4Str(UtilAll.getIP());
     private String topic = "";
     private String msgId = "";
+    // 消息偏移量 ID，包含了 Broker 的 IP 和消息存储在 Broker 上的偏移量
     private String offsetMsgId = "";
     private String tags = "";
     private String keys = "";
+    // 生产者采集时为 Broker 的 IP，消费者采集时为消费者 IP
     private String storeHost = LOCAL_ADDRESS;
+    // 客户端 IP。生产者采集时为生产者的 IP，消费者采集时为消费者 IP
     private String clientHost = LOCAL_ADDRESS;
+    // 存储时间
     private long storeTime;
     private int retryTimes;
+    // 消息体长度
     private int bodyLength;
+    // 消息类型
     private MessageType msgType;
     private LocalTransactionState transactionState;
     private String transactionId;

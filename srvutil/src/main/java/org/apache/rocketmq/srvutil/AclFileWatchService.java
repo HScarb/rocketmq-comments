@@ -33,6 +33,9 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * ACL 配置文件监控服务。监控文件变化，重载 ACL 配置
+ */
 public class AclFileWatchService extends ServiceThread {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 

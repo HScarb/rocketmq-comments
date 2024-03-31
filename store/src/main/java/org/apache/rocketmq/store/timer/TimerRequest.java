@@ -21,14 +21,29 @@ import org.apache.rocketmq.common.message.MessageExt;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
+/**
+ * 定时消息保存请求，用于定时消息存储到 TimerLog
+ */
 public class TimerRequest {
 
+    /**
+     * 物理偏移量
+     */
     private final long offsetPy;
+    /**
+     * 消息存储大小
+     */
     private final int sizePy;
+    /**
+     * 定时时间
+     */
     private final long delayTime;
 
     private final int magic;
 
+    /**
+     * 入队时间戳
+     */
     private long enqueueTime;
     private MessageExt msg;
 
@@ -41,6 +56,9 @@ public class TimerRequest {
     //whether the operation is successful
     private boolean succ;
 
+    /**
+     * 删除消息 UNIQKEY
+     */
     private Set<String> deleteList;
 
     public TimerRequest(long offsetPy, int sizePy, long delayTime, long enqueueTime, int magic) {

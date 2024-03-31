@@ -25,19 +25,22 @@ import org.apache.rocketmq.store.SelectMappedBufferResult;
 
 import java.nio.ByteBuffer;
 
+/**
+ * 定时消息文件，保存消息的索引
+ */
 public class TimerLog {
     private static Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     public final static int BLANK_MAGIC_CODE = 0xBBCCDDEE ^ 1880681586 + 8;
     private final static int MIN_BLANK_LEN = 4 + 8 + 4;
     public final static int UNIT_SIZE = 4  //size
-            + 8 //prev pos
-            + 4 //magic value
-            + 8 //curr write time, for trace
-            + 4 //delayed time, for check
-            + 8 //offsetPy
-            + 4 //sizePy
-            + 4 //hash code of real topic
-            + 8; //reserved value, just in case of
+        + 8 //prev pos
+        + 4 //magic value
+        + 8 //curr write time, for trace
+        + 4 //delayed time, for check
+        + 8 //offsetPy
+        + 4 //sizePy
+        + 4 //hash code of real topic
+        + 8; //reserved value, just in case of
     public final static int UNIT_PRE_SIZE_FOR_MSG = 28;
     public final static int UNIT_PRE_SIZE_FOR_METRIC = 40;
     private final MappedFileQueue mappedFileQueue;
@@ -57,6 +60,14 @@ public class TimerLog {
         return append(data, 0, data.length);
     }
 
+    /**
+     * 将定时消息索引写入 TimerLog
+     *
+     * @param data
+     * @param pos
+     * @param len
+     * @return TimerLog 写入的物理偏移量，写入失败返回 -1
+     */
     public long append(byte[] data, int pos, int len) {
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
         if (null == mappedFile || mappedFile.isFull()) {
@@ -85,6 +96,7 @@ public class TimerLog {
             }
         }
         long currPosition = mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();
+        // 将定时消息索引写入 TimerLog
         if (!mappedFile.appendMessage(data, pos, len)) {
             log.error("Append error for timer log");
             return -1;
@@ -99,6 +111,12 @@ public class TimerLog {
         return mappedFile.selectMappedBuffer((int) (offsetPy % mappedFile.getFileSize()));
     }
 
+    /**
+     * 根据偏移量获取 Buffer
+     *
+     * @param offsetPy TimerLog 中的物理偏移量
+     * @return
+     */
     public SelectMappedBufferResult getWholeBuffer(long offsetPy) {
         MappedFile mappedFile = mappedFileQueue.findMappedFileByOffset(offsetPy);
         if (null == mappedFile)

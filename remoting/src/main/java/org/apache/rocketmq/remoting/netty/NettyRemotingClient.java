@@ -614,15 +614,18 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     }
 
     private ChannelFuture getAndCreateChannelAsync(final String addr) throws InterruptedException {
+        // 如果请求的地址为空，则请求 Nameserver，否则请求 Broker
         if (null == addr) {
             return getAndCreateNameserverChannelAsync();
         }
 
+        // 查询 Channel 缓存表，如果查到直接返回
         ChannelWrapper cw = this.channelTables.get(addr);
         if (cw != null && cw.isOK()) {
             return cw.getChannelFuture();
         }
 
+        // 创建 Channel
         return this.createChannelAsync(addr);
     }
 
@@ -634,6 +637,12 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         return getAndCreateChannelAsync(addr).awaitUninterruptibly().channel();
     }
 
+    /**
+     * 获取或创建 Nameserver 的 Channel
+     * @return
+     * @throws RemotingConnectException
+     * @throws InterruptedException
+     */
     private ChannelFuture getAndCreateNameserverChannelAsync() throws InterruptedException {
         String addr = this.namesrvAddrChoosed.get();
         if (addr != null) {
@@ -643,6 +652,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
             }
         }
 
+        // 获取 Nameserver 列表
         final List<String> addrList = this.namesrvAddrList.get();
         if (this.namesrvChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
             try {
@@ -655,6 +665,7 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
                 }
 
                 if (addrList != null && !addrList.isEmpty()) {
+                    // 轮询 Nameserver 列表，尝试建立 Channel
                     int index = this.namesrvIndex.incrementAndGet();
                     index = Math.abs(index);
                     index = index % addrList.size();
@@ -676,7 +687,14 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
         return null;
     }
 
+    /**
+     * 创建到 Broker 的 Channel
+     * @param addr
+     * @return
+     * @throws InterruptedException
+     */
     private ChannelFuture createChannelAsync(final String addr) throws InterruptedException {
+        // 先尝试从缓存拿
         ChannelWrapper cw = this.channelTables.get(addr);
         if (cw != null && cw.isOK()) {
             return cw.getChannelFuture();

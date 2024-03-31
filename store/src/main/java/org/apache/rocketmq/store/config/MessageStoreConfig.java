@@ -66,7 +66,7 @@ public class MessageStoreConfig {
 
     // TimerLog file size, default is 100M
     private int mappedFileSizeTimerLog = 100 * 1024 * 1024;
-
+    // 定时消息精度
     private int timerPrecisionMs = 1000;
 
     private int timerRollWindowSlot = 3600 * 24 * 2;
@@ -196,6 +196,8 @@ public class MessageStoreConfig {
     private int maxHashSlotNum = 5000000;
     private int maxIndexNum = 5000000 * 4;
     private int maxMsgsNumBatch = 64;
+    // 是否在异常关闭恢复时保证索引文件安全
+    // 如果设为true，恢复时会从索引文件最后成功保存的时间点开始恢复CommitLog
     @ImportantField
     private boolean messageIndexSafe = false;
     private int haListenPort = 10912;
@@ -213,10 +215,16 @@ public class MessageStoreConfig {
     private volatile BrokerRole brokerRole = BrokerRole.ASYNC_MASTER;
     @ImportantField
     private FlushDiskType flushDiskType = FlushDiskType.ASYNC_FLUSH;
+    /**
+     * 同步刷盘超时时间，默认 5s
+     */
     // Used by GroupTransferService to sync messages from master to slave
     private int syncFlushTimeout = 1000 * 5;
     // Used by PutMessage to wait messages be flushed to disk and synchronized in current broker member group.
     private int putMessageTimeout = 1000 * 8;
+    /**
+     * 主从同步超时时间，默认 3s
+     */
     private int slaveTimeout = 3000;
     private String messageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h";
     private long flushDelayOffsetInterval = 1000 * 10;
@@ -245,12 +253,21 @@ public class MessageStoreConfig {
 
     private boolean enableScheduleMessageStats = true;
 
+    /**
+     * 是否启用轻量级队列
+     */
     private boolean enableLmq = false;
+    /**
+     * 是否允许消息分发到多个轻量级队列（分发到消费索引）
+     */
     private boolean enableMultiDispatch = false;
     private int maxLmqConsumeQueueNum = 20000;
 
+    // 是否开启异步延迟消息投递
     private boolean enableScheduleAsyncDeliver = false;
+    // 定时消息异步投递等待队列最大长度（异步投递最大并发数）
     private int scheduleAsyncDeliverMaxPendingLimit = 2000;
+    // 消息发送失败触发阻塞时的重试次数
     private int scheduleAsyncDeliverMaxResendNum2Blocked = 3;
 
     private int maxBatchDeleteFilesNum = 50;

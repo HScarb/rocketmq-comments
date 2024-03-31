@@ -29,13 +29,15 @@ import org.apache.rocketmq.common.MixAll;
  * that it belongs to, and all the single instance information for this cluster.
  */
 public class BrokerData implements Comparable<BrokerData> {
+    // 集群名称
     private String cluster;
+    // Broker 名称
     private String brokerName;
-
     /**
      * The container that store the all single instances for the current broker replication cluster.
      * The key is the brokerId, and the value is the address of the single broker instance.
      */
+    // brokerId：0，MASTER；>0，SLAVE
     private HashMap<Long, String> brokerAddrs;
     private String zoneName;
     private final Random random = new Random();

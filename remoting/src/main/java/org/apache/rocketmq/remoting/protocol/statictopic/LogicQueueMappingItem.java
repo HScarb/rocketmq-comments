@@ -20,13 +20,30 @@ import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 逻辑队列到物理队列映射项
+ */
 public class LogicQueueMappingItem extends RemotingSerializable {
 
+    /**
+     * 切换代次
+     */
     private int gen; // immutable
     private int queueId; //, immutable
     private String bname; //important, immutable
+    /**
+     * 逻辑偏移量起始位置
+     */
     private long logicOffset; // the start of the logic offset, important, can be changed by command only once
+
+    /**
+     * 物理偏移量起始位置
+     */
     private long startOffset; // the start of the physical offset, should always be 0, immutable
+
+    /**
+     * 物理偏移量最大位置
+     */
     private long endOffset = -1; // the end of the physical offset, excluded, revered -1, mutable
     private long timeOfStart = -1; // mutable, reserved
     private long timeOfEnd = -1; // mutable, reserved
@@ -47,7 +64,12 @@ public class LogicQueueMappingItem extends RemotingSerializable {
         this.timeOfEnd = timeOfEnd;
     }
 
-
+    /**
+     * 根据物理队列偏移量计算逻辑队列偏移量
+     *
+     * @param physicalQueueOffset
+     * @return
+     */
     //should only be user in sendMessage and getMinOffset
     public long computeStaticQueueOffsetLoosely(long physicalQueueOffset) {
         //consider the newly mapped item

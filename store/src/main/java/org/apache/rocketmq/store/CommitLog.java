@@ -689,6 +689,8 @@ public class CommitLog implements Swappable {
     }
 
     /**
+     * CommitLog异常恢复，即Broker异常退出的情况下走该方法
+     *
      * @throws RocksDBException only in rocksdb mode
      */
     public void recoverAbnormally(long maxPhyOffsetOfConsumeQueue) throws RocksDBException {
@@ -700,6 +702,7 @@ public class CommitLog implements Swappable {
             // Looking beginning to recover from which file
             int index = mappedFiles.size() - 1;
             MappedFile mappedFile = null;
+            // 从后往前找到最新的一个正常的CommitLog文件开始恢复
             for (; index >= 0; index--) {
                 mappedFile = mappedFiles.get(index);
                 if (this.isMappedFileMatchedRecover(mappedFile)) {
@@ -824,9 +827,15 @@ public class CommitLog implements Swappable {
         this.getMessageStore().onCommitLogAppend(msg, result, commitLogFile);
     }
 
+    /**
+     * 判断该MappedFile是否正常，如果正常则从它开始恢复
+     * @param mappedFile CommitLog文件
+     * @return 是否正常，true正常，false损坏
+     */
     private boolean isMappedFileMatchedRecover(final MappedFile mappedFile) throws RocksDBException {
         ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
 
+        // 判断文件魔数是否正确
         int magicCode = byteBuffer.getInt(MessageDecoder.MESSAGE_MAGIC_CODE_POSITION);
         if (magicCode != MessageDecoder.MESSAGE_MAGIC_CODE && magicCode != MessageDecoder.MESSAGE_MAGIC_CODE_V2) {
             return false;
@@ -843,20 +852,27 @@ public class CommitLog implements Swappable {
             int sysFlag = byteBuffer.getInt(MessageDecoder.SYSFLAG_POSITION);
             int bornHostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
             int msgStoreTimePos = 4 + 4 + 4 + 4 + 4 + 8 + 8 + 4 + 8 + bornHostLength;
-            long storeTimestamp = byteBuffer.getLong(msgStoreTimePos);
-            if (0 == storeTimestamp) {
-                return false;
-            }
+            // 获取CommitLog文件中第一条消息的存储时间
+        // 如果文件中第一条消息的存储时间等于0，说明该消息的存储文件中未存储任何消息，返回false
+        long storeTimestamp = byteBuffer.getLong(msgStoreTimePos);
+        if (0 == storeTimestamp) {
+            return false;
+        }
 
-            if (this.defaultMessageStore.getMessageStoreConfig().isMessageIndexEnable()
-                && this.defaultMessageStore.getMessageStoreConfig().isMessageIndexSafe()) {
-                if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestampIndex()) {
-                    log.info("find check timestamp, {} {}",
-                        storeTimestamp,
-                        UtilAll.timeMillisToHumanString(storeTimestamp));
-                    return true;
-                }
-            } else {
+            // 将checkpoint中存储的消息或索引的刷盘时间与文件中第一条消息的保存时间进行对比
+        // 如果CommitLog文件中第一条消息的保存时间小于等于checkpoint记录的刷盘时间（这里是索引文件刷盘时间），那么应该从该文件开始恢复
+        // 否则，说明该文件就算有保存了消息，checkpoint也没有记录，应该继续检查上一个文件判断是否从上一个文件开始恢复
+        if (this.defaultMessageStore.getMessageStoreConfig().isMessageIndexEnable()
+            && this.defaultMessageStore.getMessageStoreConfig().isMessageIndexSafe()) {
+            // 如果开启了索引文件，并且配置了索引文件的刷盘时间也参与恢复的比较，那么对比第一条消息的保存时间与索引记录时间
+            if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestampIndex()) {
+                log.info("find check timestamp, {} {}",
+                    storeTimestamp,
+                    UtilAll.timeMillisToHumanString(storeTimestamp));
+                return true;
+            }
+        } else {
+            // 将第一条消息的保存时间与CommitLog或ConsumeQueue记录时间的更小值对比
                 if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestamp()) {
                     log.info("find check timestamp, {} {}",
                         storeTimestamp,
@@ -1569,11 +1585,23 @@ public class CommitLog implements Swappable {
         }
     }
 
+    /**
+     * 同步刷盘请求
+     */
     public static class GroupCommitRequest {
+        /**
+         * 刷盘点偏移量
+         */
         private final long nextOffset;
+        /**
+         * 同步刷盘请求 Future，保存同步刷盘请求结果
+         */
         // Indicate the GroupCommitRequest result: true or false
         private final CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
         private volatile int ackNums = 1;
+        /**
+         * 同步刷盘超时时间，默认为 5s
+         */
         private final long deadLine;
 
         public GroupCommitRequest(long nextOffset, long timeoutMillis) {
@@ -1598,6 +1626,11 @@ public class CommitLog implements Swappable {
             return deadLine;
         }
 
+        /**
+         * 设置同步刷盘请求结果，结束 future
+         *
+         * @param status
+         */
         public void wakeupCustomer(final PutMessageStatus status) {
             this.flushOKFuture.complete(status);
         }
@@ -1608,13 +1641,28 @@ public class CommitLog implements Swappable {
     }
 
     /**
+     * 同步刷盘服务
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
+        /**
+         * 写请求队列，存放等待同步刷盘的请求
+         */
         private volatile LinkedList<GroupCommitRequest> requestsWrite = new LinkedList<>();
+        /**
+         * 读请求队列，用于在执行同步刷盘时与写队列交换，将读队列请求中的请求刷盘，此时写队列仍可以继续添加请求，读写分离
+         */
         private volatile LinkedList<GroupCommitRequest> requestsRead = new LinkedList<>();
+        /**
+         * 同步刷盘请求入队锁，自旋锁
+         */
         private final PutMessageSpinLock lock = new PutMessageSpinLock();
 
+        /**
+         * 将同步刷盘请求放入写请求队列
+         *
+         * @param request 同步刷盘请求
+         */
         public void putRequest(final GroupCommitRequest request) {
             lock.lock();
             try {
@@ -1622,9 +1670,13 @@ public class CommitLog implements Swappable {
             } finally {
                 lock.unlock();
             }
+            // 立刻唤醒同步刷盘服务线程
             this.wakeup();
         }
 
+        /**
+         * 读写请求队列交换
+         */
         private void swapRequests() {
             lock.lock();
             try {
@@ -1636,8 +1688,12 @@ public class CommitLog implements Swappable {
             }
         }
 
+        /**
+         * 执行同步刷盘
+         */
         private void doCommit() {
             if (!this.requestsRead.isEmpty()) {
+                // 遍历读请求队列，执行同步刷盘
                 for (GroupCommitRequest req : this.requestsRead) {
                     boolean flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                     for (int i = 0; i < 1000 && !flushOK; i++) {
@@ -1656,6 +1712,7 @@ public class CommitLog implements Swappable {
                         }
                     }
 
+                    // 设置刷盘请求结果
                     req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
 
@@ -1685,6 +1742,7 @@ public class CommitLog implements Swappable {
                 }
             }
 
+            // 正常关闭服务，等待 10ms，让所有同步刷盘请求保存到写队列，然后再执行一次刷盘操作
             // Under normal circumstances shutdown, wait for the arrival of the
             // request, and then flush
             try {
@@ -1810,6 +1868,9 @@ public class CommitLog implements Swappable {
             CommitLog.log.info(this.getServiceName() + " service end");
         }
 
+        /**
+         * 同步刷盘服务被唤醒时交换读写请求列表
+         */
         @Override
         protected void onWaitEnd() {
             this.swapRequests();

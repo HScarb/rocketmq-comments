@@ -23,10 +23,14 @@ import org.apache.rocketmq.common.ConfigManager;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 import org.apache.rocketmq.remoting.protocol.body.SetMessageRequestModeRequestBody;
 
+/**
+ * 客户端拉消息管理器
+ */
 public class MessageRequestModeManager extends ConfigManager {
 
     private transient BrokerController brokerController;
 
+    // 客户端拉消息模式表
     private ConcurrentHashMap<String/*topic*/, ConcurrentHashMap<String/*consumerGroup*/, SetMessageRequestModeRequestBody>>
         messageRequestModeMap = new ConcurrentHashMap<>();
 
@@ -38,6 +42,13 @@ public class MessageRequestModeManager extends ConfigManager {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 设置消息拉取模式，存入本地拉取模式表缓存
+     *
+     * @param topic
+     * @param consumerGroup
+     * @param requestBody
+     */
     public void setMessageRequestMode(String topic, String consumerGroup, SetMessageRequestModeRequestBody requestBody) {
         ConcurrentHashMap<String, SetMessageRequestModeRequestBody> consumerGroup2ModeMap = messageRequestModeMap.get(topic);
         if (consumerGroup2ModeMap == null) {
