@@ -33,6 +33,10 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 和 {@link org.apache.rocketmq.store.MappedFileQueue} 类似
+ * 持有 {@link FileSegment} 的列表
+ */
 public class FlatAppendFile {
 
     protected static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -159,6 +163,11 @@ public class FlatAppendFile {
         return fileSegment;
     }
 
+    /**
+     * 获取最后一个 {@link FileSegment}
+     *
+     * @return
+     */
     public FileSegment getFileToWrite() {
         List<FileSegment> fileSegmentList = this.fileSegmentTable;
         if (fileSegmentList.isEmpty()) {
@@ -168,13 +177,22 @@ public class FlatAppendFile {
         }
     }
 
+    /**
+     * 提交数据到分级存储文件
+     *
+     * @param buffer
+     * @param timestamp
+     * @return
+     */
     public AppendResult append(ByteBuffer buffer, long timestamp) {
         AppendResult result;
         fileSegmentLock.writeLock().lock();
         try {
             FileSegment fileSegment = this.getFileToWrite();
+            // 提交数据到刷盘缓冲区
             result = fileSegment.append(buffer, timestamp);
             if (result == AppendResult.FILE_FULL) {
+                // 如果文件已满，执行当前文件刷盘操作，并提交到新文件缓冲区
                 fileSegment.commitAsync().join();
                 return this.rollingNewFile(this.getAppendOffset()).append(buffer, timestamp);
             }
@@ -184,6 +202,11 @@ public class FlatAppendFile {
         return result;
     }
 
+    /**
+     * 将最后一个 {@link FileSegment} 的提交缓冲区中的数据写入分级存储文件中
+     *
+     * @return
+     */
     public CompletableFuture<Boolean> commitAsync() {
         List<FileSegment> fileSegmentsList = this.fileSegmentTable;
         if (fileSegmentsList.isEmpty()) {
@@ -200,6 +223,7 @@ public class FlatAppendFile {
 
     public CompletableFuture<ByteBuffer> readAsync(long offset, int length) {
         List<FileSegment> fileSegmentList = this.fileSegmentTable;
+        // 从后往前遍历 FileSegment，找到包含 offset 的 FileSegment
         int index = fileSegmentList.size() - 1;
         for (; index >= 0; index--) {
             if (fileSegmentList.get(index).getBaseOffset() <= offset) {
@@ -207,14 +231,17 @@ public class FlatAppendFile {
             }
         }
 
+        // 获取 offset 所在的 FileSegment，以及它后面一个 FileSegment（如果 offset + length 跨越了两个 FileSegment）
         FileSegment fileSegment1 = fileSegmentList.get(index);
         FileSegment fileSegment2 = offset + length > fileSegment1.getCommitOffset() &&
             fileSegmentList.size() > index + 1 ? fileSegmentList.get(index + 1) : null;
 
+        // 如果没有第二个 FileSegment，直接读取第一个 FileSegment
         if (fileSegment2 == null) {
             return fileSegment1.readAsync(offset - fileSegment1.getBaseOffset(), length);
         }
 
+        // 如果有第二个 FileSegment，分别读取两个 FileSegment 的数据，然后合并
         int segment1Length = (int) (fileSegment1.getCommitOffset() - offset);
         return fileSegment1.readAsync(offset - fileSegment1.getBaseOffset(), segment1Length)
             .thenCombine(fileSegment2.readAsync(0, length - segment1Length),

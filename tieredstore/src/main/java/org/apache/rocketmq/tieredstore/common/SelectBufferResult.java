@@ -20,6 +20,9 @@ package org.apache.rocketmq.tieredstore.common;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 消息查询结果，用于分级存储预读缓存
+ */
 public class SelectBufferResult {
 
     private final ByteBuffer byteBuffer;

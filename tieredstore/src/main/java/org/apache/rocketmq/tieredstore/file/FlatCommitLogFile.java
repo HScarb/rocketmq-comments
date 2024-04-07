@@ -22,6 +22,10 @@ import org.apache.rocketmq.tieredstore.common.FileSegmentType;
 import org.apache.rocketmq.tieredstore.provider.FileSegmentFactory;
 import org.apache.rocketmq.tieredstore.util.MessageFormatUtil;
 
+/**
+ * 对应 {@link org.apache.rocketmq.store.CommitLog}
+ * 与之不同的是，此文件按照单个 Topic 单个 Queue 的粒度拆分
+ */
 public class FlatCommitLogFile extends FlatAppendFile {
 
     private static final long GET_OFFSET_ERROR = -1L;

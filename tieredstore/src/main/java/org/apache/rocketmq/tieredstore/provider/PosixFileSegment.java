@@ -170,8 +170,10 @@ public class PosixFileSegment extends FileSegment {
             .put(LABEL_OPERATION, OPERATION_POSIX_READ);
 
         CompletableFuture<ByteBuffer> future = new CompletableFuture<>();
+        // 分配 ByteBuffer，大小为 length
         ByteBuffer byteBuffer = ByteBuffer.allocate(length);
         try {
+            // 从 position 位置开始读取 length 长度的数据到 ByteBuffer 中
             readFileChannel.position(position);
             readFileChannel.read(byteBuffer);
             byteBuffer.flip();
@@ -211,9 +213,11 @@ public class PosixFileSegment extends FileSegment {
                 byte[] byteArray = ByteStreams.toByteArray(inputStream);
                 writeFileChannel.position(position);
                 ByteBuffer buffer = ByteBuffer.wrap(byteArray);
+                // 写文件
                 while (buffer.hasRemaining()) {
                     writeFileChannel.write(buffer);
                 }
+                // 立即刷盘
                 writeFileChannel.force(true);
                 attributesBuilder.put(LABEL_SUCCESS, true);
                 long costTime = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS);

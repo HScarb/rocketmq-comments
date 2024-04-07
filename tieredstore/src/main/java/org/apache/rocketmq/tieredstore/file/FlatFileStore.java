@@ -36,6 +36,9 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 分级存储文件存储
+ */
 public class FlatFileStore {
 
     private static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -44,6 +47,9 @@ public class FlatFileStore {
     private final MessageStoreConfig storeConfig;
     private final MessageStoreExecutor executor;
     private final FlatFileFactory flatFileFactory;
+    /**
+     * 基于队列维度管理的消息数据文件
+     */
     private final ConcurrentMap<MessageQueue, FlatMessageFile> flatFileConcurrentMap;
 
     public FlatFileStore(MessageStoreConfig storeConfig, MetadataStore metadataStore, MessageStoreExecutor executor) {

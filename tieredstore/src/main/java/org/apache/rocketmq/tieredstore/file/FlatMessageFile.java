@@ -41,6 +41,10 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 表示单个队列的消息文件，包含 CommitLog 和 ConsumeQueue
+ * 组合 {@link FlatCommitLogFile} 与 {@link FlatConsumeQueueFile}，并提供概念的封装
+ */
 public class FlatMessageFile implements FlatFileInterface {
 
     protected static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -244,6 +248,11 @@ public class FlatMessageFile implements FlatFileInterface {
         return consumeQueue.getCommitOffset() / MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE;
     }
 
+    /**
+     * 将提交缓冲区中的数据真正提交到分级存储中
+     *
+     * @return
+     */
     @Override
     public CompletableFuture<Boolean> commitAsync() {
         return this.commitLog.commitAsync()
@@ -276,6 +285,7 @@ public class FlatMessageFile implements FlatFileInterface {
 
     @Override
     public CompletableFuture<ByteBuffer> getConsumeQueueAsync(long queueOffset, int count) {
+        // 读取 ConsumeQueue 的 FileSegment 文件，每个 ConsumeQueue 单元大小为 20 字节
         return consumeQueue.readAsync(
             queueOffset * MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE,
             count * MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE);

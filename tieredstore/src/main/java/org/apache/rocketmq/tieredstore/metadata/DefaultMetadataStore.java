@@ -44,9 +44,16 @@ public class DefaultMetadataStore extends ConfigManager implements MetadataStore
 
     private final AtomicLong topicSequenceNumber;
     private final MessageStoreConfig storeConfig;
+    /**
+     * 分级存储 Topic 元数据、额外属性
+     */
     private final ConcurrentMap<String /* topic */, TopicMetadata> topicMetadataTable;
+    /**
+     * 分级存储 Queue 元数据、额外属性
+     */
     private final ConcurrentMap<String /* topic */, ConcurrentMap<Integer, QueueMetadata>> queueMetadataTable;
 
+    // 分级存储 FileSegment 的路径和元数据
     // Declare concurrent mapping tables to store file segment metadata
     // Key: filePath -> Value: <baseOffset, metadata>
     private final ConcurrentMap<String, ConcurrentMap<Long, FileSegmentMetadata>> commitLogFileSegmentTable;

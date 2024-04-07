@@ -21,10 +21,23 @@ import java.io.IOException;
 import java.lang.reflect.Constructor;
 import org.apache.rocketmq.store.MessageStore;
 
+/**
+ * MessageStore 工厂类
+ * 根据 BrokerConfig 配置的 MessageStorePlugin 创建扩展 MessageStore 实现
+ */
 public final class MessageStoreFactory {
+    /**
+     * 根据 BrokerConfig 配置的 MessageStorePlugin 创建扩展 MessageStore 实现
+     *
+     * @param context
+     * @param messageStore 默认 MessageStore，当前有 {@link org.apache.rocketmq.store.DefaultMessageStore} 和 {@link org.apache.rocketmq.store.RocksDBMessageStore} 两个实现
+     * @return
+     * @throws IOException
+     */
     public static MessageStore build(MessageStorePluginContext context,
         MessageStore messageStore) throws IOException {
         String plugin = context.getBrokerConfig().getMessageStorePlugIn();
+        // 如果指定了扩展 MessageStore 实现，则创建扩展 MessageStore 实现，并将默认 MessageStore 作为参数传入
         if (plugin != null && plugin.trim().length() != 0) {
             String[] pluginClasses = plugin.split(",");
             for (int i = pluginClasses.length - 1; i >= 0; --i) {

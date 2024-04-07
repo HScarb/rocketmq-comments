@@ -33,6 +33,10 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 与 {@link org.apache.rocketmq.store.logfile.MappedFile} 类似，描述一个分级存储系统中文件的句柄
+ * 被 {@link org.apache.rocketmq.tieredstore.file.FlatAppendFile} 管理
+ */
 public abstract class FileSegment implements Comparable<FileSegment>, FileSegmentProvider {
 
     private static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -55,6 +59,9 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
     protected volatile long appendPosition = 0L;
 
     protected volatile List<ByteBuffer> bufferList = new ArrayList<>();
+    /**
+     * 用于写入的自定义输入流，包装了 ByteBuffer 列表，包含要写入 FileSegment 的数据
+     */
     protected volatile FileSegmentInputStream fileSegmentInputStream;
     protected volatile CompletableFuture<Boolean> flightCommitRequest;
 
@@ -152,6 +159,11 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
         }
     }
 
+    /**
+     * 返回 {@link #bufferList} 中所有的 ByteBuffer，并清空 {@link #bufferList}
+     *
+     * @return {@link #bufferList} 中的 ByteBuffer
+     */
     protected List<ByteBuffer> borrowBuffer() {
         List<ByteBuffer> temp;
         fileLock.lock();
@@ -164,6 +176,11 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
         return temp;
     }
 
+    /**
+     * 更新 {@link #maxTimestamp} 和 {@link #minTimestamp}
+     *
+     * @param timestamp 消息存储到本地存储的时间
+     */
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     protected void updateTimestamp(long timestamp) {
         fileLock.lock();
@@ -180,6 +197,14 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
         }
     }
 
+    /**
+     * 将 ByteBuffer 追加到内存中的 {@link #bufferList} 并更新 {@link #appendPosition}
+     * 此时数据并没有真正写入磁盘，还在内存中
+     *
+     * @param buffer
+     * @param timestamp 消息存储到本地存储的时间
+     * @return
+     */
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     public AppendResult append(ByteBuffer buffer, long timestamp) {
         fileLock.lock();
@@ -206,6 +231,11 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
         return appendPosition > commitPosition;
     }
 
+    /**
+     * 将 {@link #bufferList} 中的数据写入分级存储文件中
+     *
+     * @return
+     */
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     public CompletableFuture<Boolean> commitAsync() {
         if (closed) {
@@ -221,6 +251,7 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
             return CompletableFuture.completedFuture(false);
         }
 
+        // 处理上次提交的错误（如果 fileSegmentInputStream 不为空）
         // handle last commit error
         if (fileSegmentInputStream != null) {
             long fileSize = this.getSize();
@@ -235,14 +266,18 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
             }
         }
 
+        // 计算要提交数据的大小，并创建一个 FileSegmentInputStream 自定义输入流
         int bufferSize;
         if (fileSegmentInputStream != null) {
+            // 上次提交失败，重置输入流，重新提交
             fileSegmentInputStream.rewind();
             bufferSize = fileSegmentInputStream.available();
         } else {
+            // 上次提交成功，用 bufferList 中的 ByteBuffer 创建新的输入流
             List<ByteBuffer> bufferList = this.borrowBuffer();
             bufferSize = bufferList.stream().mapToInt(ByteBuffer::remaining).sum();
             if (bufferSize == 0) {
+                // 没有数据要提交，释放提交锁
                 releaseCommitLock();
                 return CompletableFuture.completedFuture(true);
             }
@@ -250,15 +285,19 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
                 fileType, this.getCommitOffset(), bufferList, null, bufferSize);
         }
 
+        // 调用 commit0 方法执行实际提交操作
         boolean append = fileType != FileSegmentType.INDEX;
         return flightCommitRequest =
             this.commit0(fileSegmentInputStream, commitPosition, bufferSize, append)
+                // 处理提交操作结果
                 .thenApply(result -> {
                     if (result) {
+                        // 提交成功，更新 commit offset，清空 fileSegmentInputStream
                         commitPosition += bufferSize;
                         fileSegmentInputStream = null;
                         return true;
                     } else {
+                        // 提交失败，重置 fileSegmentInputStream
                         fileSegmentInputStream.rewind();
                         return false;
                     }
@@ -320,6 +359,14 @@ public abstract class FileSegment implements Comparable<FileSegment>, FileSegmen
         return readAsync(position, length).join();
     }
 
+    /**
+     * 根据 position 和 length 读取 FileSegment
+     * 内部直接调用 read0 方法来读取
+     *
+     * @param position
+     * @param length
+     * @return
+     */
     public CompletableFuture<ByteBuffer> readAsync(long position, int length) {
         CompletableFuture<ByteBuffer> future = new CompletableFuture<>();
         if (position < 0 || position >= commitPosition) {

@@ -64,16 +64,37 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
     protected static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
 
     protected final String brokerName;
+
+    /**
+     * 默认 MessageStore 的引用，当前有
+     * {@link org.apache.rocketmq.store.DefaultMessageStore} 和
+     * {@link org.apache.rocketmq.store.RocksDBMessageStore} 两个实现
+     */
     protected final MessageStore defaultStore;
     protected final MessageStoreConfig storeConfig;
     protected final MessageStorePluginContext context;
 
+    /**
+     * 分级存储元数据存储实现
+     */
     protected final MetadataStore metadataStore;
     protected final MessageStoreExecutor storeExecutor;
     protected final IndexService indexService;
+
+    /**
+     * 分级存储的文件存储实现
+     */
     protected final FlatFileStore flatFileStore;
     protected final MessageStoreFilter topicFilter;
+
+    /**
+     * 消息拉取器，用于从分级存储中拉取消息
+     */
     protected final MessageStoreFetcher fetcher;
+
+    /**
+     * 消息分发器，用于将消息写入分级存储
+     */
     protected final MessageStoreDispatcher dispatcher;
 
     public TieredMessageStore(MessageStorePluginContext context, MessageStore next) {
@@ -81,6 +102,7 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
 
         this.storeConfig = new MessageStoreConfig();
         this.context = context;
+        // 从配置文件读取存储配置
         this.context.registerConfiguration(this.storeConfig);
         this.brokerName = this.storeConfig.getBrokerName();
         this.defaultStore = next;
@@ -92,6 +114,7 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
         this.indexService = new IndexStoreService(this.flatFileStore.getFlatFileFactory(),
             MessageStoreUtil.getIndexFilePath(this.storeConfig.getBrokerName()));
         this.fetcher = new MessageStoreFetcherImpl(this);
+        // 创建分级存储分发器实例，添加到 CommitLog 消息分发器列表中
         this.dispatcher = new MessageStoreDispatcherImpl(this);
         next.addDispatcher(dispatcher);
     }
@@ -155,33 +178,48 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
         return fetchFromCurrentStore(topic, queueId, offset, 1);
     }
 
+    /**
+     * 判断是否要从分层存储中 fetch 消息
+     *
+     * @param topic
+     * @param queueId
+     * @param offset
+     * @param batchSize
+     * @return
+     */
     @SuppressWarnings("all")
     public boolean fetchFromCurrentStore(String topic, int queueId, long offset, int batchSize) {
         MessageStoreConfig.TieredStorageLevel storageLevel = storeConfig.getTieredStorageLevel();
 
+        // FORCE - 强制走分级存储
         if (storageLevel.check(MessageStoreConfig.TieredStorageLevel.FORCE)) {
             return true;
         }
 
+        // DISABLE - 禁用分级存储
         if (!storageLevel.isEnable()) {
             return false;
         }
 
+        // 分级存储中没有该队列
         FlatMessageFile flatFile = flatFileStore.getFlatFile(new MessageQueue(topic, brokerName, queueId));
         if (flatFile == null) {
             return false;
         }
 
+        // offset 超出分级存储已提交的 offset
         if (offset >= flatFile.getConsumeQueueCommitOffset()) {
             return false;
         }
 
+        // NOT_IN_DISK（默认），且 offset 不在磁盘中，走分级存储
         // determine whether tiered storage path conditions are met
         if (storageLevel.check(MessageStoreConfig.TieredStorageLevel.NOT_IN_DISK)
             && !next.checkInStoreByConsumeOffset(topic, queueId, offset)) {
             return true;
         }
 
+        // NOT_IN_MEM，且 offset 不在内存（Page Cache）中，走分级存储
         if (storageLevel.check(MessageStoreConfig.TieredStorageLevel.NOT_IN_MEM)
             && !next.checkInMemByConsumeOffset(topic, queueId, offset, batchSize)) {
             return true;
@@ -199,11 +237,13 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
     public CompletableFuture<GetMessageResult> getMessageAsync(String group, String topic,
         int queueId, long offset, int maxMsgNums, MessageFilter messageFilter) {
 
+        // 系统 Topic，走本地存储
         // for system topic, force reading from local store
         if (topicFilter.filterTopic(topic)) {
             return next.getMessageAsync(group, topic, queueId, offset, maxMsgNums, messageFilter);
         }
 
+        // 根据 TieredStorageLevel 决定读本地存储还是分级存储，默认 NOT_IN_DISK
         if (fetchFromCurrentStore(topic, queueId, offset, maxMsgNums)) {
             log.trace("GetMessageAsync from current store, " +
                 "topic: {}, queue: {}, offset: {}, maxCount: {}", topic, queueId, offset, maxMsgNums);
@@ -215,9 +255,10 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
 
         Stopwatch stopwatch = Stopwatch.createStarted();
         return fetcher
+            // 从分级存储 fetch 消息
             .getMessageAsync(group, topic, queueId, offset, maxMsgNums, messageFilter)
+            // 处理 fetch 结果
             .thenApply(result -> {
-
                 Attributes latencyAttributes = TieredStoreMetricsManager.newAttributesBuilder()
                     .put(TieredStoreMetricsConstant.LABEL_OPERATION, TieredStoreMetricsConstant.OPERATION_API_GET_MESSAGE)
                     .put(TieredStoreMetricsConstant.LABEL_TOPIC, topic)
@@ -225,18 +266,22 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
                     .build();
                 TieredStoreMetricsManager.apiLatency.record(stopwatch.elapsed(TimeUnit.MILLISECONDS), latencyAttributes);
 
+                // 如果 fetch 不到（结果为 OFFSET_FOUND_NULL 或 NO_MATCHED_LOGIC_QUEUE），则尝试从本地存储读取
                 if (result.getStatus() == GetMessageStatus.OFFSET_FOUND_NULL ||
                     result.getStatus() == GetMessageStatus.NO_MATCHED_LOGIC_QUEUE) {
 
                     if (next.checkInStoreByConsumeOffset(topic, queueId, offset)) {
+                        // 记录监控信息和日志
                         TieredStoreMetricsManager.fallbackTotal.add(1, latencyAttributes);
                         log.debug("GetMessageAsync not found, then back to next store, result: {}, " +
                                 "topic: {}, queue: {}, queue offset: {}, offset range: {}-{}",
                             result.getStatus(), topic, queueId, offset, result.getMinOffset(), result.getMaxOffset());
+                        // 从本地存储获取
                         return next.getMessage(group, topic, queueId, offset, maxMsgNums, messageFilter);
                     }
                 }
 
+                // 消息不在分级存储也不在本地存储
                 if (result.getStatus() != GetMessageStatus.FOUND &&
                     result.getStatus() != GetMessageStatus.NO_MESSAGE_IN_QUEUE &&
                     result.getStatus() != GetMessageStatus.NO_MATCHED_LOGIC_QUEUE &&
@@ -248,11 +293,13 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
                         result.getStatus(), topic, queueId, offset, result.getMinOffset(), result.getMaxOffset());
                 }
 
+                // 找到消息
                 if (result.getStatus() == GetMessageStatus.FOUND) {
                     Attributes messagesOutAttributes = TieredStoreMetricsManager.newAttributesBuilder()
                         .put(TieredStoreMetricsConstant.LABEL_TOPIC, topic)
                         .put(TieredStoreMetricsConstant.LABEL_GROUP, group)
                         .build();
+                    // 记录监控信息
                     TieredStoreMetricsManager.messagesOutTotal.add(result.getMessageCount(), messagesOutAttributes);
 
                     if (next.getStoreStatsService() != null) {
@@ -260,12 +307,16 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
                     }
                 }
 
+                // 用本地存储的队列 minOffset 修正结果中队列的 minOffset
                 // Fix min or max offset according next store at last
                 long minOffsetInQueue = next.getMinOffsetInQueue(topic, queueId);
                 if (minOffsetInQueue >= 0 && minOffsetInQueue < result.getMinOffset()) {
                     result.setMinOffset(minOffsetInQueue);
                 }
 
+                // 一般来说，本地 ConsumeQueue 的 offset 稍大于读取消息时的 Commit offset，
+                // 所以这里没有必要将 max offset 更新为本地 ConsumeQueue 的偏移量，
+                // 否则，下次启动时的 offset 超过 commit offset，将会导致重复消费。
                 // In general, the local cq offset is slightly greater than the commit offset in read message,
                 // so there is no need to update the maximum offset to the local cq offset here,
                 // otherwise it will cause repeated consumption after next start offset over commit offset.
