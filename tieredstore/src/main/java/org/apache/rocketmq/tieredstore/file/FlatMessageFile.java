@@ -61,8 +61,17 @@ public class FlatMessageFile implements FlatFileInterface {
     protected final FlatConsumeQueueFile consumeQueue;
     protected final AtomicLong lastDestroyTime;
 
+    /**
+     * CommitLog 刷盘缓冲区
+     */
     protected final List<SelectMappedBufferResult> bufferResultList;
+    /**
+     * ConsumeQueue 刷盘缓冲区
+     */
     protected final List<DispatchRequest> dispatchRequestList;
+    /**
+     * 没用
+     */
     protected final ConcurrentMap<String, CompletableFuture<?>> inFlightRequestMap;
 
     public FlatMessageFile(FlatFileFactory fileFactory, String topic, int queueId) {
@@ -185,6 +194,9 @@ public class FlatMessageFile implements FlatFileInterface {
         return dispatchRequestList;
     }
 
+    /**
+     * 刷盘成功后释放 CommitLog 缓冲区和 ConsumeQueue 分发请求缓冲区
+     */
     @Override
     public void release() {
         for (SelectMappedBufferResult bufferResult : bufferResultList) {
@@ -273,6 +285,13 @@ public class FlatMessageFile implements FlatFileInterface {
         });
     }
 
+    /**
+     * 从 CommitLog 文件组中读取消息
+     *
+     * @param offset 物理 offset
+     * @param length 消息长度
+     * @return
+     */
     @Override
     public CompletableFuture<ByteBuffer> getCommitLogAsync(long offset, int length) {
         return commitLog.readAsync(offset, length);

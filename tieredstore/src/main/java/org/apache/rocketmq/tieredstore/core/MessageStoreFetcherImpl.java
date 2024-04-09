@@ -472,6 +472,16 @@ public class MessageStoreFetcherImpl implements MessageStoreFetcher {
         return flatFile.getQueueOffsetByTimeAsync(timestamp, type).join();
     }
 
+    /**
+     * 根据 key 从分级存储中查询消息
+     *
+     * @param topic    Topic of the message.
+     * @param key      Message key.
+     * @param maxCount Maximum count of the messages possible.
+     * @param begin    Begin timestamp.
+     * @param end      End timestamp.
+     * @return
+     */
     @Override
     public CompletableFuture<QueryMessageResult> queryMessageAsync(
         String topic, String key, int maxCount, long begin, long end) {
@@ -489,15 +499,18 @@ public class MessageStoreFetcherImpl implements MessageStoreFetcher {
             return CompletableFuture.completedFuture(new QueryMessageResult());
         }
 
+        // 查询分级存储 IndexService，查出索引项
         CompletableFuture<List<IndexItem>> future =
             messageStore.getIndexService().queryAsync(topic, key, maxCount, begin, end);
 
         return future.thenCompose(indexItemList -> {
             List<CompletableFuture<SelectMappedBufferResult>> futureList = new ArrayList<>(maxCount);
+            // 遍历索引项
             for (IndexItem indexItem : indexItemList) {
                 if (topicId != indexItem.getTopicId()) {
                     continue;
                 }
+                // 根据索引项找到 MessageQueue 对应的 FlatMessageFile
                 FlatMessageFile flatFile =
                     flatFileStore.getFlatFile(new MessageQueue(topic, brokerName, indexItem.getQueueId()));
                 if (flatFile == null) {
@@ -512,6 +525,7 @@ public class MessageStoreFetcherImpl implements MessageStoreFetcher {
                     break;
                 }
             }
+            // 读取消息完成后将消息加入结果，返回查询结果
             return CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0])).thenApply(v -> {
                 QueryMessageResult result = new QueryMessageResult();
                 futureList.forEach(f -> f.thenAccept(result::addMessage));

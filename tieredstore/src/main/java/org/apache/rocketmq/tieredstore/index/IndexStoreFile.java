@@ -54,6 +54,7 @@ import static org.apache.rocketmq.tieredstore.index.IndexStoreService.FILE_COMPA
 import static org.apache.rocketmq.tieredstore.index.IndexStoreService.FILE_DIRECTORY_NAME;
 
 /**
+ * 分级存储索引文件
  * a single IndexFile in indexService
  */
 public class IndexStoreFile implements IndexFile {
@@ -81,21 +82,50 @@ public class IndexStoreFile implements IndexFile {
     private static final int HASH_SLOT_SIZE = Long.BYTES;
     private static final int MAX_QUERY_COUNT = 512;
 
+    /**
+     * 最大哈希槽数，默认 500w
+     */
     private final int hashSlotMaxCount;
+    /**
+     * 最大索引项数，默认 2000w
+     */
     private final int indexItemMaxCount;
 
     private final ReadWriteLock fileReadWriteLock;
+    /**
+     * 索引文件状态
+     */
     private final AtomicReference<IndexStatusEnum> fileStatus;
     private final AtomicLong beginTimestamp = new AtomicLong(-1L);
     private final AtomicLong endTimestamp = new AtomicLong(-1L);
     private final AtomicInteger hashSlotCount = new AtomicInteger(0);
     private final AtomicInteger indexItemCount = new AtomicInteger(0);
 
+    /**
+     * {@link org.apache.rocketmq.tieredstore.index.IndexFile.IndexStatusEnum#UNSEALED} 状态下的索引文件，
+     * 类似本地 {@link org.apache.rocketmq.store.index.IndexFile} 的格式
+     */
     private MappedFile mappedFile;
     private ByteBuffer byteBuffer;
+
+    /**
+     * {@link org.apache.rocketmq.tieredstore.index.IndexFile.IndexStatusEnum#SEALED} 状态下的索引文件，
+     * 正在或已经压缩，等待上传到二级存储
+     */
     private MappedFile compactMappedFile;
+
+    /**
+     * {@link org.apache.rocketmq.tieredstore.index.IndexFile.IndexStatusEnum#UPLOAD} 状态下的索引文件，已上传二级存储
+     */
     private FileSegment fileSegment;
 
+    /**
+     * 创建 {@link org.apache.rocketmq.tieredstore.index.IndexFile.IndexStatusEnum#UNSEALED} 状态的索引文件
+     *
+     * @param storeConfig
+     * @param timestamp
+     * @throws IOException
+     */
     public IndexStoreFile(MessageStoreConfig storeConfig, long timestamp) throws IOException {
         this.hashSlotMaxCount = storeConfig.getTieredStoreIndexFileMaxHashSlotNum();
         this.indexItemMaxCount = storeConfig.getTieredStoreIndexFileMaxIndexNum();
@@ -113,6 +143,13 @@ public class IndexStoreFile implements IndexFile {
         this.flushNewMetadata(byteBuffer, indexItemMaxCount == this.indexItemCount.get() + 1);
     }
 
+    /**
+     * 创建 {@link org.apache.rocketmq.tieredstore.index.IndexFile.IndexStatusEnum#UPLOAD} 状态的索引文件
+     * 用刷盘到二级存储的索引文件初始化 IndexFile
+     *
+     * @param storeConfig
+     * @param fileSegment 压缩后的索引文件上传到二级存储得到的 FileSegment
+     */
     public IndexStoreFile(MessageStoreConfig storeConfig, FileSegment fileSegment) {
         this.fileSegment = fileSegment;
         this.fileStatus = new AtomicReference<>(UPLOAD);
@@ -158,6 +195,12 @@ public class IndexStoreFile implements IndexFile {
         return (keyHash < 0) ? -keyHash : keyHash;
     }
 
+    /**
+     * 更新索引文件 Header
+     *
+     * @param byteBuffer
+     * @param end
+     */
     protected void flushNewMetadata(ByteBuffer byteBuffer, boolean end) {
         byteBuffer.putInt(INDEX_MAGIC_CODE, !end ? BEGIN_MAGIC_CODE : END_MAGIC_CODE);
         byteBuffer.putLong(INDEX_BEGIN_TIME_STAMP, this.beginTimestamp.get());
@@ -198,21 +241,25 @@ public class IndexStoreFile implements IndexFile {
         try {
             fileReadWriteLock.writeLock().lock();
 
+            // 只有 UNSEALED 状态的索引文件才允许被写入
             if (!UNSEALED.equals(fileStatus.get())) {
                 return AppendResult.FILE_FULL;
             }
 
+            // 索引数量超过最大值（默认 2000w），将索引文件状态置为 SEALED 等待压缩，返回文件已满
             if (this.indexItemCount.get() + keySet.size() >= this.indexItemMaxCount) {
                 this.fileStatus.set(IndexStatusEnum.SEALED);
                 return AppendResult.FILE_FULL;
             }
 
+            // 遍历每个 Key，插入索引项
             for (String key : keySet) {
                 int hashCode = this.hashCode(this.buildKey(topic, key));
                 int slotPosition = this.getSlotPosition(hashCode % this.hashSlotMaxCount);
                 int slotOldValue = this.getSlotValue(slotPosition);
                 int timeDiff = (int) ((timestamp - this.beginTimestamp.get()) / 1000L);
 
+                // 构造 IndexItem，写入索引文件
                 IndexItem indexItem = new IndexItem(
                     topicId, queueId, offset, size, hashCode, timeDiff, slotOldValue);
                 int itemIndex = this.indexItemCount.incrementAndGet();
@@ -223,9 +270,11 @@ public class IndexStoreFile implements IndexFile {
                 if (slotOldValue <= INVALID_INDEX) {
                     this.hashSlotCount.incrementAndGet();
                 }
+                // 更新 endTimestamp
                 if (this.endTimestamp.get() < timestamp) {
                     this.endTimestamp.set(timestamp);
                 }
+                // 更新索引文件 Header
                 this.flushNewMetadata(byteBuffer, indexItemMaxCount == this.indexItemCount.get() + 1);
 
                 log.trace("IndexStoreFile put key, timestamp: {}, topic: {}, key: {}, slot: {}, item: {}, previous item: {}, content: {}",
@@ -383,6 +432,11 @@ public class IndexStoreFile implements IndexFile {
         });
     }
 
+    /**
+     * 压缩索引文件到新文件，设置索引文件状态为 SEALED，返回新文件 ByteBuffer
+     *
+     * @return 压缩后索引文件 ByteBuffer，读模式
+     */
     @Override
     public ByteBuffer doCompaction() {
         Stopwatch stopwatch = Stopwatch.createStarted();
@@ -415,36 +469,65 @@ public class IndexStoreFile implements IndexFile {
             .resolve(String.valueOf(this.getTimestamp())).toString();
     }
 
+    /**
+     * 将 UNSEALED 状态的索引文件压缩到新文件
+     * <p>
+     * 压缩文件于压缩前文件相比
+     * <ul>
+     *     <li>header 不变</li>
+     *     <li>hash 槽从 4byte 扩大到 8byte，增加了</li>
+     *     <li>索引项经过排序，去掉了指针，从 32byte 变为 28byte</li>
+     * </ul>
+     *
+     * @return 压缩后的新文件 ByteBuffer，读模式
+     * @throws IOException
+     */
     protected ByteBuffer compactToNewFile() throws IOException {
 
         byte[] payload = new byte[IndexItem.INDEX_ITEM_SIZE];
         ByteBuffer payloadBuffer = ByteBuffer.wrap(payload);
+        // 索引项开始写入位置 = header size + hash 槽总 size（hash 槽数 500w * hash 槽 size 8）
         int writePosition = INDEX_HEADER_SIZE + (hashSlotMaxCount * HASH_SLOT_SIZE);
+        // 文件大小 = 索引项写入位置 + 索引项总 size（索引项数 2000w * 索引项 size 32）
         int fileMaxLength = writePosition + COMPACT_INDEX_ITEM_SIZE * indexItemCount.get();
 
+        // 创建新的压缩索引文件
         compactMappedFile = new DefaultMappedFile(this.getCompactedFilePath(), fileMaxLength);
+        // 压缩后的索引文件 ByteBuffer
         MappedByteBuffer newBuffer = compactMappedFile.getMappedByteBuffer();
 
+        // 遍历所有 hash 槽（500w）
         for (int i = 0; i < hashSlotMaxCount; i++) {
             int slotPosition = this.getSlotPosition(i);
             int slotValue = this.getSlotValue(slotPosition);
             int writeBeginPosition = writePosition;
 
+            // 遍历 hash 槽中所有的索引项
             while (slotValue > INVALID_INDEX && writePosition < fileMaxLength) {
+                // 读取压缩前索引项
                 ByteBuffer buffer = this.byteBuffer.duplicate();
                 buffer.position(this.getItemPosition(slotValue));
                 buffer.get(payload);
+                // 读取老索引项的下一个索引项位置
                 int newSlotValue = payloadBuffer.getInt(COMPACT_INDEX_ITEM_SIZE);
+                // 截掉老索引项的下一个索引项位置，新索引项中不需要。这行是多余的，后面没有操作 buffer
                 buffer.limit(COMPACT_INDEX_ITEM_SIZE);
+                // 索引项写入到新索引文件
                 newBuffer.position(writePosition);
                 newBuffer.put(payload, 0, COMPACT_INDEX_ITEM_SIZE);
                 log.trace("IndexStoreFile do compaction, write item, slot: {}, current: {}, next: {}", i, slotValue, newSlotValue);
+                // 指向下一个索引项位置
                 slotValue = newSlotValue;
+                // 写入位置后移
                 writePosition += COMPACT_INDEX_ITEM_SIZE;
             }
 
+            // 计算所有索引项总长度
             int length = writePosition - writeBeginPosition;
+            // 向压缩后的文件写入 hash 槽数据
+            // 0~4byte: 这个 hash 槽索引项的起始位置
             newBuffer.putInt(slotPosition, writeBeginPosition);
+            // 5~8byte: 这个 hash 槽所有索引项的总长度
             newBuffer.putInt(slotPosition + Integer.BYTES, length);
 
             if (length > 0) {
@@ -452,7 +535,9 @@ public class IndexStoreFile implements IndexFile {
             }
         }
 
+        // 更新 header
         this.flushNewMetadata(newBuffer, true);
+        // 切换成读模式
         newBuffer.flip();
         return newBuffer;
     }

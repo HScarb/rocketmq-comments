@@ -434,10 +434,12 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
             log.warn("TieredMessageStore#queryMessageAsync: get earliest message time in next store failed: {}", earliestTimeInNextStore);
         }
         boolean isForce = storeConfig.getTieredStorageLevel() == MessageStoreConfig.TieredStorageLevel.FORCE;
+        // 如果查询时间在本地存储最早时间之前，或者强制查分级存储，创建一个空的 QueryResult，否则直接查询本地存储
         QueryMessageResult result = end < earliestTimeInNextStore || isForce ?
             new QueryMessageResult() :
             next.queryMessage(topic, key, maxNum, begin, end);
         int resultSize = result.getMessageBufferList().size();
+        // 从分级存储查询
         if (resultSize < maxNum && begin < earliestTimeInNextStore || isForce) {
             Stopwatch stopwatch = Stopwatch.createStarted();
             try {

@@ -221,6 +221,13 @@ public class FlatAppendFile {
         });
     }
 
+    /**
+     * 读取数据
+     *
+     * @param offset 物理 offset
+     * @param length 数据长度
+     * @return
+     */
     public CompletableFuture<ByteBuffer> readAsync(long offset, int length) {
         List<FileSegment> fileSegmentList = this.fileSegmentTable;
         // 从后往前遍历 FileSegment，找到包含 offset 的 FileSegment
@@ -262,11 +269,16 @@ public class FlatAppendFile {
         }
     }
 
+    /**
+     * 根据过期时间删除 maxTimestamp 在该时间之前的文件
+     *
+     * @param expireTimestamp 过期时间，此时间之前的文件为过期文件，可以删除
+     */
     public void destroyExpiredFile(long expireTimestamp) {
         fileSegmentLock.writeLock().lock();
         try {
             while (!fileSegmentTable.isEmpty()) {
-
+                // 从头开始遍历和删除 FileSegment，直到第一个 maxTimestamp 大于 expireTimestamp 的 FileSegment
                 // first remove expired file from fileSegmentTable
                 // then close and delete expired file
                 FileSegment fileSegment = fileSegmentTable.get(0);
@@ -282,6 +294,7 @@ public class FlatAppendFile {
                 fileSegment.destroyFile();
                 if (!fileSegment.exists()) {
                     fileSegmentTable.remove(0);
+                    // 删除 FileSegment 元数据
                     metadataStore.deleteFileSegment(filePath, fileType, fileSegment.getBaseOffset());
                 }
             }

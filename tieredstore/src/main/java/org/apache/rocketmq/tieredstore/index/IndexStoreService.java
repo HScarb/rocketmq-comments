@@ -61,12 +61,21 @@ public class IndexStoreService extends ServiceThread implements IndexService {
      * upload, upload, upload, sealed, sealed, unsealed
      */
     private final MessageStoreConfig storeConfig;
+    /**
+     * 索引文件表，根据创建时间排序的跳表
+     */
     private final ConcurrentSkipListMap<Long /* timestamp */, IndexFile> timeStoreTable;
     private final ReadWriteLock readWriteLock;
     private final AtomicLong compactTimestamp;
     private final String filePath;
+    /**
+     * FlatAppendFile 工厂，用于创建 IndexFile 的 FlatAppendFile。这里只在 recover 时使用
+     */
     private final FlatFileFactory fileAllocator;
 
+    /**
+     * 正在写入的索引文件，也是 {@link #timeStoreTable} 中的最后一个索引文件
+     */
     private IndexFile currentWriteFile;
     private FlatAppendFile flatAppendFile;
 
@@ -180,6 +189,18 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         return timeStoreTable;
     }
 
+    /**
+     * 向最新的索引文件中写入索引项
+     *
+     * @param topic     The topic of the key.
+     * @param topicId   The ID of the topic.
+     * @param queueId   The ID of the queue.
+     * @param keySet    The set of keys to be indexed.
+     * @param offset    The offset value of the key.
+     * @param size      The size of the key.
+     * @param timestamp The timestamp of the key.
+     * @return
+     */
     @Override
     public AppendResult putKey(
         String topic, int topicId, int queueId, Set<String> keySet, long offset, int size, long timestamp) {
@@ -192,6 +213,7 @@ public class IndexStoreService extends ServiceThread implements IndexService {
             return AppendResult.SUCCESS;
         }
 
+        // 向当前写入的索引文件中写入索引项，重试 3 次
         for (int i = 0; i < 3; i++) {
             AppendResult result = this.currentWriteFile.putKey(
                 topic, topicId, queueId, keySet, offset, size, timestamp);
@@ -199,11 +221,13 @@ public class IndexStoreService extends ServiceThread implements IndexService {
             if (AppendResult.SUCCESS.equals(result)) {
                 return AppendResult.SUCCESS;
             } else if (AppendResult.FILE_FULL.equals(result)) {
+                // 当前索引文件已满，创建新的索引文件
                 // use current time to ensure the order of file
                 this.createNewIndexFile(System.currentTimeMillis());
             }
         }
 
+        // 写入失败
         log.error("IndexStoreService put key three times return error, topic: {}, topicId: {}, " +
             "queueId: {}, keySize: {}, timestamp: {}", topic, topicId, queueId, keySet.size(), timestamp);
         return AppendResult.UNKNOWN_ERROR;
@@ -252,6 +276,12 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         return future;
     }
 
+    /**
+     * 压缩索引文件并上传到二级存储
+     *
+     * @param indexFile
+     * @return
+     */
     public boolean doCompactThenUploadFile(IndexFile indexFile) {
         if (IndexFile.IndexStatusEnum.UPLOAD.equals(indexFile.getFileStatus())) {
             log.error("IndexStoreService file status not correct, so skip, timestamp: {}, status: {}",
@@ -261,17 +291,21 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         }
 
         Stopwatch stopwatch = Stopwatch.createStarted();
+        // 如果缓冲区的所有内容都已刷盘到二级存储，则可以进行压缩
         if (flatAppendFile.getCommitOffset() == flatAppendFile.getAppendOffset()) {
+            // 压缩成新索引文件，返回新文件的 ByteBuffer
             ByteBuffer byteBuffer = indexFile.doCompaction();
             if (byteBuffer == null) {
                 log.error("IndexStoreService found compaction buffer is null, timestamp: {}", indexFile.getTimestamp());
                 return false;
             }
+            // 创建新的 FileSegment，即压缩后的索引文件
             flatAppendFile.rollingNewFile(Math.max(0L, flatAppendFile.getAppendOffset()));
             flatAppendFile.append(byteBuffer, indexFile.getTimestamp());
             flatAppendFile.getFileToWrite().setMinTimestamp(indexFile.getTimestamp());
             flatAppendFile.getFileToWrite().setMaxTimestamp(indexFile.getEndTimestamp());
         }
+        // 等待压缩后的索引文件刷盘到分级存储
         boolean result = flatAppendFile.commitAsync().join();
 
         List<FileSegment> fileSegmentList = flatAppendFile.getFileSegmentList();
@@ -283,10 +317,12 @@ public class IndexStoreService extends ServiceThread implements IndexService {
             log.info("IndexStoreService upload compacted file success, timestamp: {}", indexFile.getTimestamp());
         }
 
+        // 将上传后的所以你文件封装成 IndexFile，保存到 timeStoreTable 中
         readWriteLock.writeLock().lock();
         try {
             IndexFile storeFile = new IndexStoreFile(storeConfig, fileSegment);
             timeStoreTable.put(storeFile.getTimestamp(), storeFile);
+            // 删除本地 IndexFile（未压缩的和压缩后的）
             indexFile.destroy();
         } catch (Exception e) {
             log.error("IndexStoreService rolling file error, timestamp: {}, cost: {}ms",
@@ -342,6 +378,13 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         log.debug("IndexStoreService set compact timestamp to: {}", timestamp);
     }
 
+    /**
+     * 找到下一个待压缩的索引文件
+     * <p>
+     * 根据 {@link #compactTimestamp} 找到下一个 的索引文件，并且不是最后一个文件。一般只有最后一个文件是 UNSEALED 状态。
+     *
+     * @return 下一个待压缩的索引文件
+     */
     protected IndexFile getNextSealedFile() {
         Map.Entry<Long, IndexFile> entry =
             this.timeStoreTable.higherEntry(this.compactTimestamp.get());
@@ -367,14 +410,20 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         }
     }
 
+    /**
+     * 每 10s 进行一次扫描和压缩
+     */
     @Override
     public void run() {
         while (!this.isStopped()) {
+            // 删除过期索引文件
             long expireTimestamp = System.currentTimeMillis()
                 - TimeUnit.HOURS.toMillis(storeConfig.getTieredStoreFileReservedTime());
             this.destroyExpiredFile(expireTimestamp);
 
+            // 找到下一个 SEALED 待压缩文件
             IndexFile indexFile = this.getNextSealedFile();
+            // 压缩并上传
             if (indexFile != null) {
                 if (this.doCompactThenUploadFile(indexFile)) {
                     this.setCompactTimestamp(indexFile.getTimestamp());

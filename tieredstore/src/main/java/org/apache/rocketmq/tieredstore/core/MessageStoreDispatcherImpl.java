@@ -301,6 +301,12 @@ public class MessageStoreDispatcherImpl extends ServiceThread implements Message
         return CompletableFuture.completedFuture(false);
     }
 
+    /**
+     * 执行 CommitLog 刷盘，再执行 ConsumeQueue 的刷盘，再执行 Index 构建（如果开启 Index）
+     *
+     * @param flatFile
+     * @return
+     */
     public CompletableFuture<Void> commitAsync(FlatFileInterface flatFile) {
         return flatFile.commitAsync().thenAcceptAsync(success -> {
             if (success) {
@@ -314,6 +320,7 @@ public class MessageStoreDispatcherImpl extends ServiceThread implements Message
     }
 
     /**
+     * 根据分发请求构建 Index
      * Building indexes with offsetId is no longer supported because offsetId has changed in tiered storage
      */
     public void constructIndexFile(long topicId, DispatchRequest request) {
