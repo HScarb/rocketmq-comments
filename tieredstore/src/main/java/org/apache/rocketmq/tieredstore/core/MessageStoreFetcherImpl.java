@@ -473,7 +473,7 @@ public class MessageStoreFetcherImpl implements MessageStoreFetcher {
     }
 
     /**
-     * 根据 key 从分级存储中查询消息
+     * 根据 key 从分级存储索引文件中查询消息
      *
      * @param topic    Topic of the message.
      * @param key      Message key.

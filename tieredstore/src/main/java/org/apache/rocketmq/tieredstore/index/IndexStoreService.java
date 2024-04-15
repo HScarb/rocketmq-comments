@@ -233,6 +233,16 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         return AppendResult.UNKNOWN_ERROR;
     }
 
+    /**
+     * 异步查询索引项
+     *
+     * @param topic     The topic of the key.
+     * @param key       The key to be queried.
+     * @param maxCount
+     * @param beginTime The start time of the query range.
+     * @param endTime   The end time of the query range.
+     * @return
+     */
     @Override
     public CompletableFuture<List<IndexItem>> queryAsync(
         String topic, String key, int maxCount, long beginTime, long endTime) {
@@ -240,11 +250,13 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         CompletableFuture<List<IndexItem>> future = new CompletableFuture<>();
         try {
             readWriteLock.readLock().lock();
+            // 获取时间范围内的所有索引文件
             ConcurrentNavigableMap<Long, IndexFile> pendingMap =
                 this.timeStoreTable.subMap(beginTime, true, endTime, true);
             List<CompletableFuture<Void>> futureList = new ArrayList<>(pendingMap.size());
             ConcurrentHashMap<String /* queueId-offset */, IndexItem> result = new ConcurrentHashMap<>();
 
+            // 逆序遍历索引文件，异步查询索引项
             for (Map.Entry<Long, IndexFile> entry : pendingMap.descendingMap().entrySet()) {
                 CompletableFuture<Void> completableFuture = entry.getValue()
                     .queryAsync(topic, key, maxCount, beginTime, endTime)
@@ -257,6 +269,7 @@ public class IndexStoreService extends ServiceThread implements IndexService {
                 futureList.add(completableFuture);
             }
 
+            // 等待所有查询任务完成
             CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0]))
                 .whenComplete((v, t) -> {
                     // Try to return the query results as much as possible here
@@ -379,7 +392,7 @@ public class IndexStoreService extends ServiceThread implements IndexService {
     }
 
     /**
-     * 找到下一个待压缩的索引文件
+     * 按时间顺序找到下一个待压缩的索引文件
      * <p>
      * 根据 {@link #compactTimestamp} 找到下一个 的索引文件，并且不是最后一个文件。一般只有最后一个文件是 UNSEALED 状态。
      *
@@ -421,7 +434,7 @@ public class IndexStoreService extends ServiceThread implements IndexService {
                 - TimeUnit.HOURS.toMillis(storeConfig.getTieredStoreFileReservedTime());
             this.destroyExpiredFile(expireTimestamp);
 
-            // 找到下一个 SEALED 待压缩文件
+            // 按时间顺序找到下一个 SEALED 待压缩文件
             IndexFile indexFile = this.getNextSealedFile();
             // 压缩并上传
             if (indexFile != null) {

@@ -817,6 +817,7 @@ public class BrokerController {
             // Load store plugin
             MessageStorePluginContext context = new MessageStorePluginContext(
                 messageStoreConfig, brokerStatsManager, messageArrivingListener, brokerConfig, configuration);
+            // 根据配置文件中的 storePlugin 属性，加载对应的消息存储插件。并且传入默认的消息存储实现的引用，以便插件中可以调用默认的消息存储实现。
             this.messageStore = MessageStoreFactory.build(context, defaultMessageStore);
             this.messageStore.getDispatcherList().addFirst(new CommitLogDispatcherCalcBitMap(this.brokerConfig, this.consumerFilterManager));
             if (messageStoreConfig.isTimerWheelEnable()) {

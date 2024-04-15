@@ -103,7 +103,13 @@ public class MessageStoreConfig {
     private int tieredStoreIndexFileMaxIndexNum = 5000000 * 4;
     // index file will force rolling to next file after idle specified time, default is 3h
     private int tieredStoreIndexFileRollingIdleInterval = 3 * 60 * 60 * 1000;
+    /**
+     * 分级存储元数据存储实现
+     */
     private String tieredMetadataServiceProvider = "org.apache.rocketmq.tieredstore.metadata.DefaultMetadataStore";
+    /**
+     * 分级存储数据存储实现
+     */
     private String tieredBackendServiceProvider = "org.apache.rocketmq.tieredstore.provider.MemoryFileSegment";
     // file reserved time, default is 72 hour
     private int tieredStoreFileReservedTime = 72;
@@ -140,12 +146,21 @@ public class MessageStoreConfig {
      * 从分级存储读取时是否启用预读缓存
      */
     private boolean readAheadCacheEnable = true;
+    /**
+     * 从分级存储时每次读取消息数量阈值
+     */
     private int readAheadMessageCountThreshold = 4096;
     /**
      * 从分级存储中每次读取消息的长度阈值
      */
     private int readAheadMessageSizeThreshold = 16 * 1024 * 1024;
+    /**
+     * 预读缓存过期时间，默认 15s
+     */
     private long readAheadCacheExpireDuration = 15 * 1000;
+    /**
+     *  最大预读缓存大小，为 JVM 最大内存的一定比例，默认 30%
+     */
     private double readAheadCacheSizeThresholdRate = 0.3;
 
     /**

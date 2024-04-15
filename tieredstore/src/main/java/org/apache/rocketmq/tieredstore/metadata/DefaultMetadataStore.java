@@ -36,6 +36,9 @@ import org.apache.rocketmq.tieredstore.metadata.entity.FileSegmentMetadata;
 import org.apache.rocketmq.tieredstore.metadata.entity.QueueMetadata;
 import org.apache.rocketmq.tieredstore.metadata.entity.TopicMetadata;
 
+/**
+ * 分级存储元数据存储实现，用于存储 Topic、Queue、FileSegment 等元数据信息
+ */
 public class DefaultMetadataStore extends ConfigManager implements MetadataStore {
 
     private static final int DEFAULT_CAPACITY = 1024;

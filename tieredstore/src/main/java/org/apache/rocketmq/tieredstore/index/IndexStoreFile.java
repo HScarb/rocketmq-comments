@@ -298,8 +298,10 @@ public class IndexStoreFile implements IndexFile {
         switch (this.fileStatus.get()) {
             case UNSEALED:
             case SEALED:
+                // 从本地未压缩的索引文件中查询索引项。SEALED 状态的索引文件仍然会保留未压缩前的索引文件。
                 return this.queryAsyncFromUnsealedFile(buildKey(topic, key), maxCount, beginTime, endTime);
             case UPLOAD:
+                // 从已压缩并上传到二级存储的索引文件中查询索引项
                 return this.queryAsyncFromSegmentFile(buildKey(topic, key), maxCount, beginTime, endTime);
             case SHUTDOWN:
             default:
@@ -307,6 +309,15 @@ public class IndexStoreFile implements IndexFile {
         }
     }
 
+    /**
+     * 从未压缩的索引文件中查询索引项。SEALED 状态的索引文件仍然会保留未压缩前的索引文件，可能已经创建新索引文件并正在压缩
+     *
+     * @param key
+     * @param maxCount
+     * @param beginTime
+     * @param endTime
+     * @return
+     */
     protected CompletableFuture<List<IndexItem>> queryAsyncFromUnsealedFile(
         String key, int maxCount, long beginTime, long endTime) {
 
@@ -322,10 +333,12 @@ public class IndexStoreFile implements IndexFile {
                     return result;
                 }
 
+                // 根据 key 的 hashCode 计算 hash 槽位置，获取 hash 槽的值。它指向第一个索引项的位置
                 int hashCode = this.hashCode(key);
                 int slotPosition = this.getSlotPosition(hashCode % this.hashSlotMaxCount);
                 int slotValue = this.getSlotValue(slotPosition);
 
+                // 遍历索引项链表，直到找到足够的索引项或者达到最大查询次数（默认 512）
                 int left = MAX_QUERY_COUNT;
                 while (left > 0 &&
                     slotValue > INVALID_INDEX &&
@@ -360,6 +373,15 @@ public class IndexStoreFile implements IndexFile {
         }, MessageStoreExecutor.getInstance().bufferFetchExecutor);
     }
 
+    /**
+     * 从已压缩并上传到二级存储的索引文件中查询索引项
+     *
+     * @param key
+     * @param maxCount
+     * @param beginTime
+     * @param endTime
+     * @return
+     */
     protected CompletableFuture<List<IndexItem>> queryAsyncFromSegmentFile(
         String key, int maxCount, long beginTime, long endTime) {
 
@@ -368,9 +390,11 @@ public class IndexStoreFile implements IndexFile {
         }
 
         Stopwatch stopwatch = Stopwatch.createStarted();
+        // 从二级存储中读取索引文件，根据 key 的 hashCode 计算 hash 槽位置
         int hashCode = this.hashCode(key);
         int slotPosition = this.getSlotPosition(hashCode % this.hashSlotMaxCount);
 
+        // 根据 hash 槽位置查询 hash 槽
         CompletableFuture<List<IndexItem>> future = this.fileSegment.readAsync(slotPosition, HASH_SLOT_SIZE)
             .thenCompose(slotBuffer -> {
                 if (slotBuffer.remaining() < HASH_SLOT_SIZE) {
@@ -378,13 +402,16 @@ public class IndexStoreFile implements IndexFile {
                         "key: {}, maxCount: {}, timestamp={}-{}", key, maxCount, beginTime, endTime);
                     return CompletableFuture.completedFuture(null);
                 }
+                // 读取 hash 槽中的索引项起始位置和总长度
                 int indexPosition = slotBuffer.getInt();
                 int indexTotalSize = Math.min(slotBuffer.getInt(), COMPACT_INDEX_ITEM_SIZE * 1024);
                 if (indexPosition <= INVALID_INDEX || indexTotalSize <= 0) {
                     return CompletableFuture.completedFuture(null);
                 }
+                // 根据索引项起始位置和索引项总长度读取索引项
                 return this.fileSegment.readAsync(indexPosition, indexTotalSize);
             })
+            // 组装读取到的索引项
             .thenApply(itemBuffer -> {
                 List<IndexItem> result = new ArrayList<>();
                 if (itemBuffer == null) {
@@ -397,6 +424,7 @@ public class IndexStoreFile implements IndexFile {
                     return result;
                 }
 
+                // 遍历索引项，根据索引项的时间戳范围和 hashCode 过滤索引项，直到找到足够的索引项
                 int size = itemBuffer.remaining() / COMPACT_INDEX_ITEM_SIZE;
                 byte[] bytes = new byte[COMPACT_INDEX_ITEM_SIZE];
                 for (int i = 0; i < size; i++) {
