@@ -16,13 +16,6 @@
  */
 package org.apache.rocketmq.tieredstore.file;
 
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
 import org.apache.rocketmq.tieredstore.common.AppendResult;
 import org.apache.rocketmq.tieredstore.common.FileSegmentType;
 import org.apache.rocketmq.tieredstore.metadata.MetadataStore;
@@ -32,6 +25,14 @@ import org.apache.rocketmq.tieredstore.provider.FileSegmentFactory;
 import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 /**
  * 和 {@link org.apache.rocketmq.store.MappedFileQueue} 类似
@@ -61,8 +62,12 @@ public class FlatAppendFile {
         this.recoverFileSize();
     }
 
+    /**
+     * 恢复分级存储文件内容，根据 FileSegment 元数据信息，重新创建 FileSegment 列表
+     */
     public void recover() {
         List<FileSegment> fileSegmentList = new ArrayList<>();
+        // 根据分级存储文件类型，获取对应类型的 FileSegment 元数据列表，遍历并创建 FileSegment
         this.metadataStore.iterateFileSegment(this.filePath, this.fileType, metadata -> {
             FileSegment fileSegment = this.fileSegmentFactory.createSegment(
                 this.fileType, metadata.getPath(), metadata.getBaseOffset());
@@ -99,14 +104,22 @@ public class FlatAppendFile {
         }
     }
 
+    /**
+     * 刷新元数据，然后持久化元数据到本地文件
+     *
+     * @param fileSegment 分级存储文件句柄
+     */
     public void flushFileSegmentMeta(FileSegment fileSegment) {
+        // 获取现有的 FileSegmentMetadata
         FileSegmentMetadata metadata = this.metadataStore.getFileSegment(
             this.filePath, fileSegment.getFileType(), fileSegment.getBaseOffset());
+        // 如果不存在，则创建新的 FileSegmentMetadata
         if (metadata == null) {
             metadata = new FileSegmentMetadata(
                 this.filePath, fileSegment.getBaseOffset(), fileSegment.getFileType().getCode());
             metadata.setCreateTimestamp(System.currentTimeMillis());
         }
+        // 根据 FileSegment 承载的数据类型更新 metadataStore 中的对应元数据表，持久化到本地文件
         metadata.setSize(fileSegment.getCommitPosition());
         metadata.setBeginTimestamp(fileSegment.getMinTimestamp());
         metadata.setEndTimestamp(fileSegment.getMaxTimestamp());

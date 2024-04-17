@@ -18,17 +18,7 @@ package org.apache.rocketmq.tieredstore;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Sets;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.sdk.metrics.InstrumentSelector;
-import io.opentelemetry.sdk.metrics.ViewBuilder;
-import java.lang.reflect.Constructor;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
+
 import org.apache.rocketmq.common.BoundaryType;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.Pair;
@@ -58,6 +48,19 @@ import org.apache.rocketmq.tieredstore.metrics.TieredStoreMetricsManager;
 import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Constructor;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.sdk.metrics.InstrumentSelector;
+import io.opentelemetry.sdk.metrics.ViewBuilder;
 
 public class TieredMessageStore extends AbstractPluginMessageStore {
 
@@ -119,11 +122,15 @@ public class TieredMessageStore extends AbstractPluginMessageStore {
         next.addDispatcher(dispatcher);
     }
 
+    /**
+     * 重新加载分级存储
+     */
     @Override
     public boolean load() {
         boolean loadFlatFile = flatFileStore.load();
         boolean loadNextStore = next.load();
         boolean result = loadFlatFile && loadNextStore;
+        // 如果加载成功，启动索引服务和分级存储消息上传线程
         if (result) {
             indexService.start();
             dispatcher.start();

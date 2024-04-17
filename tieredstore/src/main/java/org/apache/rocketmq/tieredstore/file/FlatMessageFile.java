@@ -17,15 +17,7 @@
 package org.apache.rocketmq.tieredstore.file;
 
 import com.alibaba.fastjson.JSON;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.BoundaryType;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -40,6 +32,16 @@ import org.apache.rocketmq.tieredstore.util.MessageFormatUtil;
 import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 表示单个队列的消息文件，包含 CommitLog 和 ConsumeQueue
@@ -109,6 +111,12 @@ public class FlatMessageFile implements FlatFileInterface {
         return !this.consumeQueue.fileSegmentTable.isEmpty();
     }
 
+    /**
+     * 新建/恢复 Topic 元数据
+     *
+     * @param topic
+     * @return
+     */
     public TopicMetadata recoverTopicMetadata(String topic) {
         TopicMetadata topicMetadata = this.metadataStore.getTopic(topic);
         if (topicMetadata == null) {
@@ -117,6 +125,13 @@ public class FlatMessageFile implements FlatFileInterface {
         return topicMetadata;
     }
 
+    /**
+     * 新建/恢复 Queue 元数据
+     *
+     * @param topic
+     * @param queueId
+     * @return
+     */
     public QueueMetadata recoverQueueMetadata(String topic, int queueId) {
         MessageQueue mq = new MessageQueue(topic, storeConfig.getBrokerName(), queueId);
         QueueMetadata queueMetadata = this.metadataStore.getQueue(mq);
@@ -126,6 +141,9 @@ public class FlatMessageFile implements FlatFileInterface {
         return queueMetadata;
     }
 
+    /**
+     * 更新队列元数据，并持久化到文件
+     */
     public void flushMetadata() {
         if (queueMetadata != null) {
             queueMetadata.setMinOffset(this.getConsumeQueueMinOffset());

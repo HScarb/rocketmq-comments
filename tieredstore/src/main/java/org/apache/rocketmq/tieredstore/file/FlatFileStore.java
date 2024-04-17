@@ -18,14 +18,7 @@ package org.apache.rocketmq.tieredstore.file;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.tieredstore.MessageStoreConfig;
@@ -35,6 +28,15 @@ import org.apache.rocketmq.tieredstore.metadata.entity.TopicMetadata;
 import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 分级存储文件存储
@@ -60,6 +62,9 @@ public class FlatFileStore {
         this.flatFileConcurrentMap = new ConcurrentHashMap<>();
     }
 
+    /**
+     * 重新加载分级存储文件
+     */
     public boolean load() {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
@@ -86,9 +91,13 @@ public class FlatFileStore {
         return true;
     }
 
+    /**
+     * 重启时恢复分级存储文件
+     */
     public void recover() {
         Semaphore semaphore = new Semaphore(storeConfig.getTieredStoreMaxPendingLimit() / 4);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        // 遍历持久化到本地的 Topic 元数据
         metadataStore.iterateTopic(topicMetadata -> {
             semaphore.acquireUninterruptibly();
             futures.add(this.recoverAsync(topicMetadata)
@@ -102,11 +111,20 @@ public class FlatFileStore {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
+    /**
+     * 异步恢复分级存储文件
+     *
+     * @param topicMetadata
+     * @return
+     */
     public CompletableFuture<Void> recoverAsync(TopicMetadata topicMetadata) {
         return CompletableFuture.runAsync(() -> {
             Stopwatch stopwatch = Stopwatch.createStarted();
             AtomicLong queueCount = new AtomicLong();
+            // 遍历 Topic 下所有 Queue 的元数据
             metadataStore.iterateQueue(topicMetadata.getTopic(), queueMetadata -> {
+                // 为每个队列初始化分级存储消息数据文件 FlatMessageFile
+                // 初始化分级存储消息数据文件时，会递归恢复 CommitLog、ConsumeQueue、IndexFile 的分级存储文件（也遍历元数据来恢复）
                 FlatMessageFile flatFile = this.computeIfAbsent(new MessageQueue(
                     topicMetadata.getTopic(), storeConfig.getBrokerName(), queueMetadata.getQueue().getQueueId()));
                 queueCount.incrementAndGet();
@@ -131,6 +149,12 @@ public class FlatFileStore {
         return flatFileFactory;
     }
 
+    /**
+     * 根据队列返回对应的消息数据文件，如果不存在则创建
+     *
+     * @param messageQueue
+     * @return
+     */
     public FlatMessageFile computeIfAbsent(MessageQueue messageQueue) {
         return flatFileConcurrentMap.computeIfAbsent(messageQueue,
             mq -> new FlatMessageFile(flatFileFactory, mq.getTopic(), mq.getQueueId()));
