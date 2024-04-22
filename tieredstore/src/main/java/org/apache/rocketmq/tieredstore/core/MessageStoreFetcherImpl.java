@@ -241,9 +241,9 @@ public class MessageStoreFetcherImpl implements MessageStoreFetcher {
     /**
      * 从二级存储中读取消息
      *
-     * @param flatFile
-     * @param queueOffset
-     * @param batchSize
+     * @param flatFile 分级存储消息队列文件
+     * @param queueOffset 要读取消息的偏移量
+     * @param batchSize  读取消息的数量
      * @return
      */
     public CompletableFuture<GetMessageResultExt> getMessageFromTieredStoreAsync(
@@ -327,6 +327,7 @@ public class MessageStoreFetcherImpl implements MessageStoreFetcher {
             return flatFile.getCommitLogAsync(firstCommitLogOffset, (int) length);
         });
 
+        // 这里用 thenCombine 方法，因为需要使用 cqBuffer 和 msgBuffer 两个入参
         return readConsumeQueueFuture.thenCombine(readCommitLogFuture, (cqBuffer, msgBuffer) -> {
             // 拆分每条消息的 ByteBuffer
             List<SelectBufferResult> bufferList = MessageFormatUtil.splitMessageBuffer(cqBuffer, msgBuffer);
