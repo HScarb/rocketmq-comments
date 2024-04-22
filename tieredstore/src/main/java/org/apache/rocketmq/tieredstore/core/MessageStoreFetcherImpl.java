@@ -46,6 +46,9 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 分级存储消息读取器，负责处理分级存储读取请求，包含一层预读缓存
+ */
 public class MessageStoreFetcherImpl implements MessageStoreFetcher {
 
     private static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);

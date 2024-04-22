@@ -49,6 +49,9 @@ import org.apache.rocketmq.tieredstore.util.MessageStoreUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 分级存储索引文件服务
+ */
 public class IndexStoreService extends ServiceThread implements IndexService {
 
     private static final Logger log = LoggerFactory.getLogger(MessageStoreUtil.TIERED_STORE_LOGGER_NAME);
@@ -111,10 +114,12 @@ public class IndexStoreService extends ServiceThread implements IndexService {
     private void recover() {
         Stopwatch stopwatch = Stopwatch.createStarted();
 
+        // 删除已经压缩但没有上传的本地索引文件
         // delete compact file directory
         UtilAll.deleteFile(new File(Paths.get(storeConfig.getStorePathRootDir(),
             FILE_DIRECTORY_NAME, FILE_COMPACTED_DIRECTORY_NAME).toString()));
 
+        // 恢复本地旧的没有上传的索引文件
         // recover local
         File dir = new File(Paths.get(storeConfig.getStorePathRootDir(), FILE_DIRECTORY_NAME).toString());
         this.doConvertOldFormatFile(Paths.get(dir.getPath(), "0000").toString());
@@ -147,9 +152,11 @@ public class IndexStoreService extends ServiceThread implements IndexService {
         this.currentWriteFile = this.timeStoreTable.lastEntry().getValue();
         this.setCompactTimestamp(this.timeStoreTable.firstKey() - 1);
 
+        // 从元数据恢复已经上传到分级存储的索引文件句柄
         // recover remote
         this.flatAppendFile = fileAllocator.createFlatFileForIndexFile(filePath);
 
+        // 为每个分级存储的 FileSegment 创建 IndexFile
         for (FileSegment fileSegment : flatAppendFile.getFileSegmentList()) {
             IndexFile indexFile = new IndexStoreFile(storeConfig, fileSegment);
             IndexFile localFile = timeStoreTable.get(indexFile.getTimestamp());

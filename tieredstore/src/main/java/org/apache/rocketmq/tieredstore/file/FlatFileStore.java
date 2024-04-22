@@ -70,6 +70,7 @@ public class FlatFileStore {
         try {
             this.flatFileConcurrentMap.clear();
             this.recover();
+            // 启动定时任务，定时清理过期文件，每分钟一次
             this.executor.commonExecutor.scheduleWithFixedDelay(() -> {
                 long expiredTimeStamp = System.currentTimeMillis() -
                     TimeUnit.HOURS.toMillis(storeConfig.getTieredStoreFileReservedTime());
