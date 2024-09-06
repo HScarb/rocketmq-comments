@@ -36,6 +36,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.proxy.Socks5ProxyHandler;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
@@ -96,7 +97,13 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     private static final long MIN_CLOSE_TIMEOUT_MILLIS = 100;
 
     private final NettyClientConfig nettyClientConfig;
+    /**
+     * Netty 客户端启动帮助类
+     */
     private final Bootstrap bootstrap = new Bootstrap();
+    /**
+     * Netty 客户端 IO 线程池，处理 read 和 write
+     */
     private final EventLoopGroup eventLoopGroupWorker;
     private final Lock lockChannelTables = new ReentrantLock();
     private final Map<String /* cidr */, SocksProxyConfig /* proxy */> proxyMap = new HashMap<>();
@@ -112,6 +119,9 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     private final AtomicInteger namesrvIndex = new AtomicInteger(initValueIndex());
     private final Lock namesrvChannelLock = new ReentrantLock();
 
+    /**
+     * 请求处理器的默认线程池
+     */
     private final ExecutorService publicExecutor;
     private final ExecutorService scanExecutor;
 
@@ -120,6 +130,9 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
      */
     private ExecutorService callbackExecutor;
     private final ChannelEventListener channelEventListener;
+    /**
+     * Netty ChannelHandler 执行线程池，在这里主要执行 {@link SslHandler} 的逻辑
+     */
     private EventExecutorGroup defaultEventExecutorGroup;
 
     public NettyRemotingClient(final NettyClientConfig nettyClientConfig) {

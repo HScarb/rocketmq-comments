@@ -81,22 +81,31 @@ public abstract class NettyRemotingAbstract {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.ROCKETMQ_REMOTING_NAME);
 
     /**
+     * 控制 oneway 发送方式的并发度的信号量，默认为 65535
      * Semaphore to limit maximum number of on-going one-way requests, which protects system memory footprint.
      */
     protected final Semaphore semaphoreOneway;
 
     /**
+     * 控制异步发送方式的并发度的信号量，默认为 65535
      * Semaphore to limit maximum number of on-going asynchronous requests, which protects system memory footprint.
      */
     protected final Semaphore semaphoreAsync;
 
     /**
+     * 当前正在等待对端返回的请求处理表，其中 opaque 表示请求的编号，全局唯一，通常采用原子递增。
+     * <p>
+     * 通常套路是客户端向对端发送网络请求时，通常会采取单一长连接，发送请求后立即返回 ResponseFuture，同时将请求放入到该映射表中，
+     * 收到客户端响应时（客户端响应会包含请求 code），从该映射表中获取对应的 ResponseFuture，通知调用端的返回结果。
+     * 这里是 Future 模式在网络编程中的经典运用。
+     *
      * This map caches all on-going requests.
      */
     protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
         new ConcurrentHashMap<>(256);
 
     /**
+     * 请求码和对应的处理器的映射表，每个请求码对应一个处理器和一个线程池
      * This container holds all processors per request code, aka, for each incoming request, we may look up the
      * responding processor in this map to handle the request.
      */
@@ -120,6 +129,7 @@ public abstract class NettyRemotingAbstract {
     protected volatile SslContext sslContext;
 
     /**
+     * 注册的 RPC 钩子列表
      * custom rpc hooks
      */
     protected List<RPCHook> rpcHooks = new ArrayList<>();

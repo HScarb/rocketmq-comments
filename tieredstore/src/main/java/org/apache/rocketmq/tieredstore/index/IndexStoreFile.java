@@ -503,7 +503,7 @@ public class IndexStoreFile implements IndexFile {
      * 压缩文件于压缩前文件相比
      * <ul>
      *     <li>header 不变</li>
-     *     <li>hash 槽从 4byte 扩大到 8byte，增加了</li>
+     *     <li>hash 槽从 4byte 扩大到 8byte，增加了索引项总长度</li>
      *     <li>索引项经过排序，去掉了指针，从 32byte 变为 28byte</li>
      * </ul>
      *

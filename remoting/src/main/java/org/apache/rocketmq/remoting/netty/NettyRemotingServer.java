@@ -96,22 +96,34 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     private static final Logger log = LoggerFactory.getLogger(LoggerName.ROCKETMQ_REMOTING_NAME);
     private static final Logger TRAFFIC_LOGGER = LoggerFactory.getLogger(LoggerName.ROCKETMQ_TRAFFIC_NAME);
 
+    /**
+     * Netty 服务端启动帮助类
+     */
     private final ServerBootstrap serverBootstrap;
-    // Reactor I/O处理线程池，将请求分发给业务处理线程池处理。默认3个线程
+    /**
+     * Netty Reactor 模式 worker 线程组（IO 线程组），处理 OP_READ、OP_WRITE 事件，默认 3 个线程
+     */
     private final EventLoopGroup eventLoopGroupSelector;
-    // Reactor模式连接处理线程池，默认1个线程
+    /**
+     * Netty Reactor 模式处理 OP_ACCEPT（连接事件）的线程组，只有 1 个线程
+     */
     private final EventLoopGroup eventLoopGroupBoss;
     private final NettyServerConfig nettyServerConfig;
 
-    // 公共任务线程池
+    /**
+     * 公共任务线程
+     */
     private final ExecutorService publicExecutor;
     private final ScheduledExecutorService scheduledExecutorService;
     private final ChannelEventListener channelEventListener;
 
+    /**
+     * 定时扫描器，定时对 {@link #responseTable} 中的响应数据进行扫描，移除超时请求的 {@link ResponseFuture}
+     */
     private final HashedWheelTimer timer = new HashedWheelTimer(r -> new Thread(r, "ServerHouseKeepingService"));
 
     /**
-     * 业务线程池
+     * Netty Handler 执行线程组，执行 TLS、编码、解码操作
      */
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
 
@@ -130,8 +142,17 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
     // sharable handlers
     private TlsModeHandler tlsModeHandler;
+    /**
+     * Rocketmq 通信协议编码器
+     */
     private NettyEncoder encoder;
+    /**
+     * Netty 连接管理器 Handler，主要实现连接状态的追踪
+     */
     private NettyConnectManageHandler connectionManageHandler;
+    /**
+     * Server 段业务处理器，RocketMQ 服务端业务处理的入口
+     */
     private NettyServerHandler serverHandler;
     private RemotingCodeDistributionHandler distributionHandler;
 
@@ -346,12 +367,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     }
 
     /**
-     * 注册请求处理器，对于一种请求码，注册对应的请求处理器
-     * 请求处理器是一个线程池，用来处理这一类请求
-     *
-     * @param requestCode 请求码
-     * @param processor 请求处理器
-     * @param executor 处理线程
+     * {@inheritDoc}
      */
     @Override
     public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
