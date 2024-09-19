@@ -18,8 +18,16 @@ package org.apache.rocketmq.remoting.protocol;
 
 import com.alibaba.fastjson.annotation.JSONField;
 import com.google.common.base.Stopwatch;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.common.BoundaryType;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
+import org.apache.rocketmq.remoting.CommandCustomHeader;
+import org.apache.rocketmq.remoting.annotation.CFNotNull;
+import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -33,14 +41,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.common.BoundaryType;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.org.slf4j.Logger;
-import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
-import org.apache.rocketmq.remoting.CommandCustomHeader;
-import org.apache.rocketmq.remoting.annotation.CFNotNull;
-import org.apache.rocketmq.remoting.exception.RemotingCommandException;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 public class RemotingCommand {
     public static final String SERIALIZE_TYPE_PROPERTY = "rocketmq.serialize.type";
@@ -68,6 +70,9 @@ public class RemotingCommand {
     private static volatile int configVersion = -1;
     private static AtomicInteger requestId = new AtomicInteger(0);
 
+    /**
+     * 默认使用 JSON 类型，兼容性和稳定性好。ROCKETMQ 类型性能会略好，但是由于不是默认选项，可能会有少量兼容性问题，比如 pop 消费请求码
+     */
     private static SerializeType serializeTypeConfigInThisServer = SerializeType.JSON;
 
     static {
@@ -81,20 +86,37 @@ public class RemotingCommand {
         }
     }
 
-    // 请求命令编码，表示请求命令类型
+    /**
+     * 请求命令编码，表示请求命令类型，具体类型详见 {@link RequestCode}
+     */
     private int code;
+    /**
+     * 请求发起方实现语言
+     */
     private LanguageCode language = LanguageCode.JAVA;
-    // 版本号
+    /**
+     * 版本号
+     */
     private int version = 0;
-    // 客户端请求序号
+    /**
+     * 请求编号，即 requestId
+     */
     private int opaque = requestId.getAndIncrement();
-    // 标记。倒数第一位表示请求类型，0：请求；1：返回。倒数第二位，1：单项发送
+    /**
+     * 标记。倒数第一位表示请求类型，0：请求；1：响应。倒数第二位，1：单项发送
+     */
     private int flag = 0;
-    // 描述
+    /**
+     * 描述信息
+     */
     private String remark;
-    // 扩展属性
+    /**
+     * 扩展属性
+     */
     private HashMap<String, String> extFields;
-    // 请求头信息
+    /**
+     * 请求头信息
+     */
     private transient CommandCustomHeader customHeader;
     private transient CommandCustomHeader cachedHeader;
 
@@ -192,9 +214,17 @@ public class RemotingCommand {
         return decode(Unpooled.wrappedBuffer(byteBuffer));
     }
 
+    /**
+     * RocketMQ 协议格式
+     * +----------------+----------------+----------------+
+     * | 头部长度 (4字节) | 头部数据 (N字节) | 消息体 (M字节) |
+     * +----------------+----------------+----------------+
+     */
     public static RemotingCommand decode(final ByteBuf byteBuffer) throws RemotingCommandException {
+        // 总长度
         int length = byteBuffer.readableBytes();
         int oriHeaderLen = byteBuffer.readInt();
+        // 头部长度
         int headerLength = getHeaderLength(oriHeaderLen);
         if (headerLength > length - 4) {
             throw new RemotingCommandException("decode error, bad header length: " + headerLength);
@@ -213,20 +243,34 @@ public class RemotingCommand {
         return cmd;
     }
 
+    /**
+     * 获取真正的 header 长度，保留低 24 位。
+     * RocketMQ 协议格式中，头部长度信息存储在一个 32 位整数的低 24 位中，而高 8 位用于存储协议类型。
+     */
     public static int getHeaderLength(int length) {
         return length & 0xFFFFFF;
     }
 
+    /**
+     * 解码 header
+     * @param byteBuffer
+     * @param len header 长度
+     * @param type 序列化类型 JSON/ROCKETMQ
+     * @return
+     * @throws RemotingCommandException
+     */
     private static RemotingCommand headerDecode(ByteBuf byteBuffer, int len,
         SerializeType type) throws RemotingCommandException {
         switch (type) {
             case JSON:
                 byte[] headerData = new byte[len];
                 byteBuffer.readBytes(headerData);
+                // JSON 反序列化
                 RemotingCommand resultJson = RemotingSerializable.decode(headerData, RemotingCommand.class);
                 resultJson.setSerializeTypeCurrentRPC(type);
                 return resultJson;
             case ROCKETMQ:
+                // Rocketmq 协议解码
                 RemotingCommand resultRMQ = RocketMQSerializable.rocketMQProtocolDecode(byteBuffer, len);
                 resultRMQ.setSerializeTypeCurrentRPC(type);
                 return resultRMQ;
@@ -237,6 +281,9 @@ public class RemotingCommand {
         return null;
     }
 
+    /**
+     * 获取协议类型（JSON/ROCKETMQ），协议类型存储在一个 32 位整数的高 8 位中。
+     */
     public static SerializeType getProtocolType(int source) {
         return SerializeType.valueOf((byte) ((source >> 24) & 0xFF));
     }

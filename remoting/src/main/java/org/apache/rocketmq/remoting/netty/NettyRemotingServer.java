@@ -16,6 +16,41 @@
  */
 package org.apache.rocketmq.remoting.netty;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.common.Pair;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.constant.HAProxyConstants;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.utils.BinaryUtil;
+import org.apache.rocketmq.common.utils.NetworkUtil;
+import org.apache.rocketmq.common.utils.ThreadUtils;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
+import org.apache.rocketmq.remoting.ChannelEventListener;
+import org.apache.rocketmq.remoting.InvokeCallback;
+import org.apache.rocketmq.remoting.RemotingServer;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+import org.apache.rocketmq.remoting.common.TlsMode;
+import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.security.cert.CertificateException;
+import java.time.Duration;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
@@ -54,39 +89,6 @@ import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.security.cert.CertificateException;
-import java.time.Duration;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.common.Pair;
-import org.apache.rocketmq.common.ThreadFactoryImpl;
-import org.apache.rocketmq.common.constant.HAProxyConstants;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.common.utils.BinaryUtil;
-import org.apache.rocketmq.common.utils.NetworkUtil;
-import org.apache.rocketmq.common.utils.ThreadUtils;
-import org.apache.rocketmq.logging.org.slf4j.Logger;
-import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
-import org.apache.rocketmq.remoting.ChannelEventListener;
-import org.apache.rocketmq.remoting.InvokeCallback;
-import org.apache.rocketmq.remoting.RemotingServer;
-import org.apache.rocketmq.remoting.common.RemotingHelper;
-import org.apache.rocketmq.remoting.common.TlsMode;
-import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
-import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
-import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
-import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 /**
  * Netty服务端实现
@@ -123,11 +125,12 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     private final HashedWheelTimer timer = new HashedWheelTimer(r -> new Thread(r, "ServerHouseKeepingService"));
 
     /**
-     * Netty Handler 执行线程组，执行 TLS、编码、解码操作
+     * Netty Handler 默认执行线程组，执行 TLS、编码、解码操作
      */
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
 
     /**
+     * 服务端容器，{@link NettyRemotingServer} 可以包含多个子服务器，不同子服务器监听不同的端口
      * NettyRemotingServer may hold multiple SubRemotingServer, each server will be stored in this container with a
      * ListenPort key.
      */
@@ -154,6 +157,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
      * Server 段业务处理器，RocketMQ 服务端业务处理的入口
      */
     private NettyServerHandler serverHandler;
+    /**
+     * 服务端处理的请求码分布统计处理器，每秒统计服务端处理的请求码（和响应码）分布
+     */
     private RemotingCodeDistributionHandler distributionHandler;
 
     public NettyRemotingServer(final NettyServerConfig nettyServerConfig) {
@@ -302,14 +308,17 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
      */
     protected ChannelPipeline configChannel(SocketChannel ch) {
         return ch.pipeline()
+            // TLS 握手处理器
             .addLast(defaultEventExecutorGroup, HANDSHAKE_HANDLER_NAME, new HandshakeHandler())
             .addLast(defaultEventExecutorGroup,
                 encoder,
                 new NettyDecoder(),
+                // 请求码统计处理器
                 distributionHandler,
                 new IdleStateHandler(0, 0,
                     nettyServerConfig.getServerChannelMaxIdleTimeSeconds()),
                 connectionManageHandler,
+                // RocketMQ 服务端业务处理器
                 serverHandler
             );
     }
@@ -400,6 +409,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         return defaultRequestProcessorPair;
     }
 
+    /**
+     * 创建新的子服务端
+     * @param port 子服务端绑定的端口
+     * @return 子服务端
+     */
     @Override
     public RemotingServer newRemotingServer(final int port) {
         SubRemotingServer remotingServer = new SubRemotingServer(port,
@@ -588,6 +602,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, RemotingCommand msg) {
             int localPort = RemotingHelper.parseSocketAddressPort(ctx.channel().localAddress());
+            // 根据端口获取对应的 SubRemotingServer
             NettyRemotingAbstract remotingAbstract = NettyRemotingServer.this.remotingServerTable.get(localPort);
             if (localPort != -1 && remotingAbstract != null) {
                 remotingAbstract.processMessageReceived(ctx, msg);
@@ -686,6 +701,8 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     }
 
     /**
+     * NettyRemotingServer 支持绑定多个端口，每个端口由一个 {@link SubRemotingServer} 绑定。
+     * SubRemotingServer 将所有功能委托给 NettyRemotingServer，因此子服务器可以共享其父服务器的所有资源。
      * The NettyRemotingServer supports bind multiple ports, each port bound by a SubRemotingServer. The
      * SubRemotingServer will delegate all the functions to NettyRemotingServer, so the sub server can share all the
      * resources from its parent server.
@@ -799,6 +816,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * HAProxy 的 Proxy Protocol 处理器，可以从 HAProxy 代理的请求中解析出源地址、目标地址等信息。
+     * <p>
+     * 用于云服务的逻辑多租中分辨客户端和逻辑实例
+     */
     public class HAProxyMessageHandler extends ChannelInboundHandlerAdapter {
 
         @Override
@@ -842,6 +864,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 解析 Proxy Protocol 的 TLV，即 Type-Length-Value，Proxy Protocol 中带的自定义参数
+     * @param tlv
+     * @param channel
+     */
     protected void handleHAProxyTLV(HAProxyTLV tlv, Channel channel) {
         byte[] valueBytes = ByteBufUtil.getBytes(tlv.content());
         if (!BinaryUtil.isAscii(valueBytes)) {

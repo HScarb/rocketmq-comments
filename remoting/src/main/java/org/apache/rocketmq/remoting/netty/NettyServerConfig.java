@@ -26,6 +26,9 @@ public class NettyServerConfig implements Cloneable {
      * By default, it's wildcard address, listening all network interfaces.
      */
     private String bindAddress = "0.0.0.0";
+    /**
+     * 服务端绑定端口
+     */
     private int listenPort = 0;
     // Netty 业务线程个数
     private int serverWorkerThreads = 8;

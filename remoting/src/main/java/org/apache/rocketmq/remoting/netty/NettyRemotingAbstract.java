@@ -16,33 +16,14 @@
  */
 package org.apache.rocketmq.remoting.netty;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.ssl.SslContext;
-import io.netty.handler.ssl.SslHandler;
-import io.netty.util.concurrent.Future;
-import io.opentelemetry.api.common.AttributesBuilder;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map.Entry;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
-import javax.annotation.Nullable;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_IS_LONG_POLLING;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_REQUEST_CODE;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_RESPONSE_CODE;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_RESULT;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.RESULT_ONEWAY;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.RESULT_PROCESS_REQUEST_FAILED;
+import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.RESULT_WRITE_CHANNEL_FAILED;
+
 import org.apache.rocketmq.common.AbortProcessException;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.Pair;
@@ -65,13 +46,35 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_IS_LONG_POLLING;
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_REQUEST_CODE;
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_RESPONSE_CODE;
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.LABEL_RESULT;
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.RESULT_ONEWAY;
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.RESULT_PROCESS_REQUEST_FAILED;
-import static org.apache.rocketmq.remoting.metrics.RemotingMetricsConstant.RESULT_WRITE_CHANNEL_FAILED;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+import javax.annotation.Nullable;
+
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslHandler;
+import io.netty.util.concurrent.Future;
+import io.opentelemetry.api.common.AttributesBuilder;
 
 public abstract class NettyRemotingAbstract {
 
@@ -93,7 +96,7 @@ public abstract class NettyRemotingAbstract {
     protected final Semaphore semaphoreAsync;
 
     /**
-     * 当前正在等待对端返回的请求处理表，其中 opaque 表示请求的编号，全局唯一，通常采用原子递增。
+     * 当前正在等待对端返回的请求处理表，其中 Key 是 requestId，全局唯一，采用原子递增；Value 是响应结果的 Future 对象
      * <p>
      * 通常套路是客户端向对端发送网络请求时，通常会采取单一长连接，发送请求后立即返回 ResponseFuture，同时将请求放入到该映射表中，
      * 收到客户端响应时（客户端响应会包含请求 code），从该映射表中获取对应的 ResponseFuture，通知调用端的返回结果。
@@ -101,7 +104,7 @@ public abstract class NettyRemotingAbstract {
      *
      * This map caches all on-going requests.
      */
-    protected final ConcurrentMap<Integer /* opaque */, ResponseFuture> responseTable =
+    protected final ConcurrentMap<Integer /* requestId */, ResponseFuture> responseTable =
         new ConcurrentHashMap<>(256);
 
     /**
@@ -187,9 +190,11 @@ public abstract class NettyRemotingAbstract {
     public void processMessageReceived(ChannelHandlerContext ctx, RemotingCommand msg) {
         if (msg != null) {
             switch (msg.getType()) {
+                // 处理对端发来的请求
                 case REQUEST_COMMAND:
                     processRequestCommand(ctx, msg);
                     break;
+                // 发出请求后，接收和处理对端的响应
                 case RESPONSE_COMMAND:
                     processResponseCommand(ctx, msg);
                     break;
@@ -388,6 +393,7 @@ public abstract class NettyRemotingAbstract {
     }
 
     /**
+     * 处理之前发出请求的响应，从 {@link #responseTable} 中移除对应的 {@link ResponseFuture}，并执行回调函数，设置响应结果，
      * Process response from remote peer to the previous issued requests.
      *
      * @param ctx channel handler context.
@@ -399,8 +405,10 @@ public abstract class NettyRemotingAbstract {
         if (responseFuture != null) {
             responseFuture.setResponseCommand(cmd);
 
+            // 从请求等待响应表中移除等待中的请求
             responseTable.remove(opaque);
 
+            // 执行响应结束的回调函数
             if (responseFuture.getInvokeCallback() != null) {
                 executeInvokeCallback(responseFuture);
             } else {
@@ -413,6 +421,7 @@ public abstract class NettyRemotingAbstract {
     }
 
     /**
+     * 为响应结果执行回调函数
      * Execute callback in callback executor. If callback executor is null, run directly in current thread
      */
     private void executeInvokeCallback(final ResponseFuture responseFuture) {
@@ -480,6 +489,7 @@ public abstract class NettyRemotingAbstract {
     public abstract ExecutorService getCallbackExecutor();
 
     /**
+     * 周期性扫描，移除过期的请求响应
      * <p>
      * This method is periodically invoked to scan and expire deprecated request.
      * </p>
@@ -526,6 +536,10 @@ public abstract class NettyRemotingAbstract {
         return invoke0(channel, request, timeoutMillis);
     }
 
+    /**
+     * Netty RPC 调用底层实现
+     * 使用 Netty Channel 发送请求，将响应 Future 返回，并且会放入 {@link #responseTable} 待响应请求表中
+     */
     protected CompletableFuture<ResponseFuture> invoke0(final Channel channel, final RemotingCommand request,
         final long timeoutMillis) {
         CompletableFuture<ResponseFuture> future = new CompletableFuture<>();
@@ -534,6 +548,7 @@ public abstract class NettyRemotingAbstract {
 
         boolean acquired;
         try {
+            // 获取信号量，控制并发
             acquired = this.semaphoreAsync.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (Throwable t) {
             future.completeExceptionally(t);
@@ -548,6 +563,7 @@ public abstract class NettyRemotingAbstract {
                 return future;
             }
 
+            // 创建请求的响应 Future，放入待响应请求表 responseTable
             AtomicReference<ResponseFuture> responseFutureReference = new AtomicReference<>();
             final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, request, timeoutMillis - costTime,
                 new InvokeCallback() {
@@ -567,13 +583,17 @@ public abstract class NettyRemotingAbstract {
                     }
                 }, once);
             responseFutureReference.set(responseFuture);
+            // 放入待响应请求表 responseTable
             this.responseTable.put(opaque, responseFuture);
             try {
+                // Netty Channel 写数据
                 channel.writeAndFlush(request).addListener((ChannelFutureListener) f -> {
                     if (f.isSuccess()) {
+                        // 设置请求发送成功
                         responseFuture.setSendRequestOK(true);
                         return;
                     }
+                    // 设置请求发送失败
                     requestFail(opaque);
                     log.warn("send a request command to channel <{}> failed.", RemotingHelper.parseChannelRemoteAddr(channel));
                 });
@@ -621,6 +641,12 @@ public abstract class NettyRemotingAbstract {
             });
     }
 
+    /**
+     * 设置请求失败
+     * <p>
+     * 从待响应请求表 {@link #responseTable} 中移除该 {@link ResponseFuture}，并设置状态为请求发送失败
+     * @param opaque requestId
+     */
     private void requestFail(final int opaque) {
         ResponseFuture responseFuture = responseTable.remove(opaque);
         if (responseFuture != null) {
