@@ -158,17 +158,20 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     private ProduceAccumulator produceAccumulator = null;
 
     /**
+     * 是否开启异步生产反压模式，避免异步生产请求过多时生产线程池等待队列满，导致生产抛出异常
      * Indicate whether to block message when asynchronous sending traffic is too heavy.
      */
     private boolean enableBackpressureForAsyncMode = false;
 
     /**
+     * 异步生产反压模式打开时，限制最大的异步发送消息的并发数，默认 10000
      * on BackpressureForAsyncMode, limit maximum number of on-going sending async messages
      * default is 10000
      */
     private int backPressureForAsyncSendNum = 10000;
 
     /**
+     * 异步生产反压模式打开时，限制正在发送的异步消息的总消息大小，默认 100M
      * on BackpressureForAsyncMode, limit maximum message size of on-going sending async messages
      * default is 100M
      */
@@ -192,11 +195,13 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     private RPCHook rpcHook = null;
 
     /**
+     * 允许在运行时动态修改 {@link DefaultMQProducer#backPressureForAsyncSendNum}，修改时要对其加锁，不允许新的请求进入
      *  backPressureForAsyncSendNum is guaranteed to be modified at runtime and no new requests are allowed
      */
     private final ReadWriteCASLock backPressureForAsyncSendNumLock = new ReadWriteCASLock();
 
     /**
+     * 允许在运行时动态修改 {@link DefaultMQProducer#backPressureForAsyncSendSize}，修改时要对其加锁，不允许新的请求进入
      * backPressureForAsyncSendSize is guaranteed to be modified at runtime and no new requests are allowed
      */
     private final ReadWriteCASLock backPressureForAsyncSendSizeLock = new ReadWriteCASLock();
@@ -1362,6 +1367,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     }
 
     /**
+     * 用户动态修改 backPressureForAsyncSendNum
      * For user modify backPressureForAsyncSendNum at runtime
      */
     public void setBackPressureForAsyncSendNum(int backPressureForAsyncSendNum) {
@@ -1379,6 +1385,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     }
 
     /**
+     * 用户动态修改 backPressureForAsyncSendSize
     * For user modify backPressureForAsyncSendSize at runtime
      */
     public void setBackPressureForAsyncSendSize(int backPressureForAsyncSendSize) {
@@ -1405,6 +1412,9 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
         this.backPressureForAsyncSendNum = backPressureForAsyncSendNum;
     }
 
+    /**
+     * 获取 {@link DefaultMQProducer#backPressureForAsyncSendSize} 读锁
+     */
     public void acquireBackPressureForAsyncSendSizeLock() {
         this.backPressureForAsyncSendSizeLock.acquireReadLock();
     }
@@ -1413,6 +1423,9 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
         this.backPressureForAsyncSendSizeLock.releaseReadLock();
     }
 
+    /**
+     * 获取 {@link DefaultMQProducer#backPressureForAsyncSendNum} 读锁
+     */
     public void acquireBackPressureForAsyncSendNumLock() {
         this.backPressureForAsyncSendNumLock.acquireReadLock();
     }

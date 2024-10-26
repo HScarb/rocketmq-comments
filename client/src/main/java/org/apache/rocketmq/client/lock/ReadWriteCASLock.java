@@ -19,6 +19,9 @@ package org.apache.rocketmq.client.lock;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 自旋读写锁
+ */
 public class ReadWriteCASLock {
     //true : can lock ; false : not lock
     private final AtomicBoolean writeLock = new AtomicBoolean(true);

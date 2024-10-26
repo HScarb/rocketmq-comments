@@ -115,8 +115,15 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     private MQFaultStrategy mqFaultStrategy;
     private ExecutorService asyncSenderExecutor;
 
+    // 异步生产者反压，避免异步生产请求等待过多，导致生产抛出异常
     // backpressure related
+    /**
+     * 允许并发的异步生产请求量，默认为 10000
+     */
     private Semaphore semaphoreAsyncSendNum;
+    /**
+     * 允许并发的异步生产请求总大小，默认为 100M
+     */
     private Semaphore semaphoreAsyncSendSize;
 
     public DefaultMQProducerImpl(final DefaultMQProducer defaultMQProducer) {
@@ -580,6 +587,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         executeAsyncMessageSend(runnable, msg, newCallBack, timeout, beginStartTime);
     }
 
+    /**
+     * 异步发送反压模式开启时用的发送回调，在回调时释放 semaphore
+     */
     class BackpressureSendCallBack implements SendCallback {
         public boolean isSemaphoreAsyncSizeAcquired = false;
         public boolean isSemaphoreAsyncNumAcquired = false;
@@ -602,8 +612,12 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             sendCallback.onException(e);
         }
 
+        /**
+         * 如果异步发送反压所用到的 semaphore 被获取，则释放 semaphore
+         */
         public void semaphoreProcessor() {
             if (isSemaphoreAsyncSizeAcquired) {
+                // 获取 backPressureForAsyncSendSize 读锁
                 defaultMQProducer.acquireBackPressureForAsyncSendSizeLock();
                 semaphoreAsyncSendSize.release(msgLen);
                 defaultMQProducer.releaseBackPressureForAsyncSendSizeLock();
@@ -615,6 +629,12 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             }
         }
 
+        /**
+         * 动态修改异步生产反压的 semaphore 值
+         * @param semaphoreAsyncNum
+         * @param semaphoreAsyncSize
+         * @throws InterruptedException
+         */
         public void semaphoreAsyncAdjust(int semaphoreAsyncNum, int semaphoreAsyncSize) throws InterruptedException {
             defaultMQProducer.acquireBackPressureForAsyncSendNumLock();
             if (semaphoreAsyncNum > 0) {
@@ -638,6 +658,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
+    /**
+     * 执行异步消息生产 Runnable
+     */
     public void executeAsyncMessageSend(Runnable runnable, final Message msg, final BackpressureSendCallBack sendCallback,
         final long timeout, final long beginStartTime)
         throws MQClientException, InterruptedException {
@@ -650,6 +673,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
         try {
             if (isEnableBackpressureForAsyncMode) {
+                // 开启异步生产反压模式，尝试获取 semaphore
                 defaultMQProducer.acquireBackPressureForAsyncSendNumLock();
                 long costTime = System.currentTimeMillis() - beginStartTime;
 
@@ -675,8 +699,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         new RemotingTooMuchRequestException("send message tryAcquire semaphoreAsyncSize timeout"));
                     return;
                 }
+                // 获取 semaphore 成功
             }
 
+            // 提交生产请求到生产线程池处理
             executor.submit(runnable);
         } catch (RejectedExecutionException e) {
             if (isEnableBackpressureForAsyncMode) {
