@@ -463,12 +463,14 @@ public class MessageStoreConfig {
     private String bottomMostCompressionTypeForConsumeQueueStore = "zstd";
 
     /**
+     * 自适应自旋锁初始和退避累加时的自旋次数，默认为 1000
      * Spin number in the retreat strategy of spin lock
      * Default is 1000
      */
     private int spinLockCollisionRetreatOptimalDegree = 1000;
 
     /**
+     * 在 putMessage 时是否使用自适应的锁
      * Use AdaptiveBackOffLock
      **/
     private boolean useABSLock = false;
