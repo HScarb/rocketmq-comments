@@ -22,6 +22,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Topic / 消费组属性解析器
+ */
 public class AttributeParser {
 
     public static final String ATTR_ARRAY_SEPARATOR_COMMA = ",";

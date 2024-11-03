@@ -114,6 +114,9 @@ public class MessageStoreConfig {
     private boolean enableConsumeQueueExt = false;
     // ConsumeQueue extend file size, 48M
     private int mappedFileSizeConsumeQueueExt = 48 * 1024 * 1024;
+    /**
+     * batch 消费队列单个文件大小
+     */
     private int mapperFileSizeBatchConsumeQueue = 300000 * BatchConsumeQueue.CQ_STORE_UNIT_SIZE;
     // Bit count of filter bit map.
     // this will be set by pipe of calculate filter bit map.

@@ -30,26 +30,32 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.store.exception.ConsumeQueueException;
 
 /**
+ * 队列偏移量操作组件，保存着每个队列当前的逻辑偏移量表
  * QueueOffsetOperator is a component for operating offsets for queues.
  */
 public class QueueOffsetOperator {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     /**
-     * 队列当前逻辑偏移量
+     * 队列当前逻辑偏移量表表
+     * key：{TOPIC}-{QUEUE_ID}，value：下一条消息的 offset
      */
     private ConcurrentMap<String, Long> topicQueueTable = new ConcurrentHashMap<>(1024);
     /**
-     * Batch消费队列当前逻辑偏移量
+     * Batch消费队列当前逻辑偏移量表
+     * key：{TOPIC}-{QUEUE_ID}，value：下一条消息的 offset
      */
     private ConcurrentMap<String, Long> batchTopicQueueTable = new ConcurrentHashMap<>(1024);
 
     /**
-     * 轻量级队列的消费队列当前逻辑偏移量
+     * 轻量级队列的消费队列当前逻辑偏移量表
      * {TOPIC}-{QUEUE_ID} --> NEXT Consume Queue Offset
      */
     private ConcurrentMap<String/* topic-queue-id */, Long/* offset */> lmqTopicQueueTable = new ConcurrentHashMap<>(1024);
 
+    /**
+     * 获取消费队列当前下一条消息的 offset。每次消息成功 put 到 {@link org.apache.rocketmq.store.CommitLog} 后会 {@link #increaseQueueOffset(String, short)}
+     */
     public long getQueueOffset(String topicQueueKey) {
         return ConcurrentHashMapUtils.computeIfAbsent(this.topicQueueTable, topicQueueKey, k -> 0L);
     }
@@ -58,6 +64,11 @@ public class QueueOffsetOperator {
         return this.topicQueueTable.get(topicQueueKey);
     }
 
+    /**
+     * 消息放入 {@link org.apache.rocketmq.store.CommitLog} 后调用，准备新的 offset
+     * @param topicQueueKey
+     * @param messageNum
+     */
     public void increaseQueueOffset(String topicQueueKey, short messageNum) {
         Long queueOffset = ConcurrentHashMapUtils.computeIfAbsent(this.topicQueueTable, topicQueueKey, k -> 0L);
         topicQueueTable.put(topicQueueKey, queueOffset + messageNum);

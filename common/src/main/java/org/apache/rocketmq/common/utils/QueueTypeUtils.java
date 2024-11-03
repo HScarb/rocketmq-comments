@@ -30,6 +30,9 @@ public class QueueTypeUtils {
         return Objects.equals(CQType.BatchCQ, getCQType(topicConfig));
     }
 
+    /**
+     * 获取消费队列类型，batchCQ 或 simpleCQ
+     */
     public static CQType getCQType(Optional<TopicConfig> topicConfig) {
         if (!topicConfig.isPresent()) {
             return CQType.valueOf(TopicAttributes.QUEUE_TYPE_ATTRIBUTE.getDefaultValue());

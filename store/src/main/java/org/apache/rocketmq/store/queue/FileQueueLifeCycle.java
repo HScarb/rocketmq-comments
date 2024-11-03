@@ -19,6 +19,7 @@ package org.apache.rocketmq.store.queue;
 import org.apache.rocketmq.store.Swappable;
 
 /**
+ * 队列文件生命周期接口，包含直接由文件实现的 ConsumerQueue 的生命周期方法。
  * FileQueueLifeCycle contains life cycle methods of ConsumerQueue that is directly implemented by FILE.
  */
 public interface FileQueueLifeCycle extends Swappable {

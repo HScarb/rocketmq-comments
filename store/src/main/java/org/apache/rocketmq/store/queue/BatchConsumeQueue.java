@@ -535,6 +535,9 @@ public class BatchConsumeQueue implements ConsumeQueueInterface {
         this.messageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void assignQueueOffset(QueueOffsetOperator queueOffsetOperator, MessageExtBrokerInner msg) {
         String topicQueueKey = getTopic() + "-" + getQueueId();

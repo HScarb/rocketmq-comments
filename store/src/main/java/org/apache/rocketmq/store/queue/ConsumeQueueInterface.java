@@ -25,6 +25,9 @@ import org.apache.rocketmq.store.DispatchRequest;
 import org.apache.rocketmq.store.MessageFilter;
 import org.rocksdb.RocksDBException;
 
+/**
+ * 消费队列接口
+ */
 public interface ConsumeQueueInterface extends FileQueueLifeCycle {
     /**
      * Get the topic name
@@ -175,7 +178,7 @@ public interface ConsumeQueueInterface extends FileQueueLifeCycle {
 
     /**
      * Assign queue offset.
-     * 保存每个队列当前的偏移量
+     * 查询要分发的队列的逻辑偏移量，放入消息属性
      *
      * @param queueOffsetAssigner the delegated queue offset assigner
      * @param msg message itself

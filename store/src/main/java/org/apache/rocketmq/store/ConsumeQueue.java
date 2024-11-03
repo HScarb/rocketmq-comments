@@ -835,7 +835,7 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
     }
 
     /**
-     * 查询要分发的队列的逻辑偏移量，放入消息属性
+     * {@inheritDoc}
      */
     @Override
     public void assignQueueOffset(QueueOffsetOperator queueOffsetOperator, MessageExtBrokerInner msg) {
