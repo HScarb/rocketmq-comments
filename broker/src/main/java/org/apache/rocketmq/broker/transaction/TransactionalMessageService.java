@@ -26,6 +26,7 @@ import org.apache.rocketmq.store.PutMessageResult;
 public interface TransactionalMessageService {
 
     /**
+     * 保存事务半消息到存储
      * Process prepare message, in common, we should put this message to storage service.
      *
      * @param messageInner Prepare(Half) message.
@@ -34,6 +35,7 @@ public interface TransactionalMessageService {
     PutMessageResult prepareMessage(MessageExtBrokerInner messageInner);
 
     /**
+     * 保存事务半消息到存储（异步）
      * Process prepare message in async manner, we should put this message to storage service
      *
      * @param messageInner Prepare(Half) message.

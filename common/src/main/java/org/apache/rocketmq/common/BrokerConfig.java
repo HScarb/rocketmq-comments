@@ -289,6 +289,7 @@ public class BrokerConfig extends BrokerIdentity {
     private int transactionCheckMax = 15;
 
     /**
+     * 事务消息回查间隔
      * Transaction message check interval.
      */
     @ImportantField

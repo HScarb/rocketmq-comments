@@ -31,6 +31,9 @@ import org.apache.rocketmq.logging.org.slf4j.Logger;
 import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.remoting.protocol.header.CheckTransactionStateRequestHeader;
 
+/**
+ * Broker 端事务消息状态回查基类，回查事务消息状态，执行提交或回滚
+ */
 public abstract class AbstractTransactionalMessageCheckListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
@@ -39,6 +42,9 @@ public abstract class AbstractTransactionalMessageCheckListener {
     //queue nums of topic TRANS_CHECK_MAX_TIME_TOPIC
     protected final static int TCMT_QUEUE_NUMS = 1;
 
+    /**
+     * 事务半消息回查线程池
+     */
     private static volatile ExecutorService executorService;
 
     public AbstractTransactionalMessageCheckListener() {
@@ -48,6 +54,12 @@ public abstract class AbstractTransactionalMessageCheckListener {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 发送回查请求到生产者客户端
+     *
+     * @param msgExt 事务半消息
+     * @throws Exception
+     */
     public void sendCheckMessage(MessageExt msgExt) throws Exception {
         CheckTransactionStateRequestHeader checkTransactionStateRequestHeader = new CheckTransactionStateRequestHeader();
         checkTransactionStateRequestHeader.setTopic(msgExt.getTopic());
@@ -57,10 +69,12 @@ public abstract class AbstractTransactionalMessageCheckListener {
         checkTransactionStateRequestHeader.setTransactionId(checkTransactionStateRequestHeader.getMsgId());
         checkTransactionStateRequestHeader.setTranStateTableOffset(msgExt.getQueueOffset());
         checkTransactionStateRequestHeader.setBrokerName(brokerController.getBrokerConfig().getBrokerName());
+        // 从消息属性中复原真实的 topic 和 queueId
         msgExt.setTopic(msgExt.getUserProperty(MessageConst.PROPERTY_REAL_TOPIC));
         msgExt.setQueueId(Integer.parseInt(msgExt.getUserProperty(MessageConst.PROPERTY_REAL_QUEUE_ID)));
         msgExt.setStoreSize(0);
         String groupId = msgExt.getProperty(MessageConst.PROPERTY_PRODUCER_GROUP);
+        // 轮询选择一个可用的生产者客户端通道
         Channel channel = brokerController.getProducerManager().getAvailableChannel(groupId);
         if (channel != null) {
             brokerController.getBroker2Client().checkProducerTransactionState(groupId, channel, checkTransactionStateRequestHeader, msgExt);
@@ -69,6 +83,10 @@ public abstract class AbstractTransactionalMessageCheckListener {
         }
     }
 
+    /**
+     * 处理事务半消息（回查其执行状态）
+     * @param msgExt 事务半消息
+     */
     public void resolveHalfMsg(final MessageExt msgExt) {
         if (executorService != null) {
             executorService.execute(new Runnable() {
@@ -114,6 +132,7 @@ public abstract class AbstractTransactionalMessageCheckListener {
     }
 
     /**
+     * 丢弃事务半消息
      * In order to avoid check back unlimited, we will discard the message that have been checked more than a certain
      * number of times.
      *

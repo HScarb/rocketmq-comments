@@ -23,14 +23,26 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.NamespaceUtil;
 
+/**
+ * 事务消息生产者封装，实际调用 {@link org.apache.rocketmq.client.impl.producer.DefaultMQProducerImpl}
+ */
 public class TransactionMQProducer extends DefaultMQProducer {
     private TransactionCheckListener transactionCheckListener;
     private int checkThreadPoolMinSize = 1;
     private int checkThreadPoolMaxSize = 1;
+    /**
+     * Broker 回查请求最大挂起个数
+     */
     private int checkRequestHoldMax = 2000;
 
+    /**
+     * Broker 回查请求处理线程池
+     */
     private ExecutorService executorService;
 
+    /**
+     * 事务监听器，执行本地事务和执行事务回查
+     */
     private TransactionListener transactionListener;
 
     public TransactionMQProducer() {
@@ -68,6 +80,7 @@ public class TransactionMQProducer extends DefaultMQProducer {
 
     @Override
     public void start() throws MQClientException {
+        // 初始化事务环境（Broker 回查请求处理线程池）
         this.defaultMQProducerImpl.initTransactionEnv();
         super.start();
     }
@@ -75,9 +88,20 @@ public class TransactionMQProducer extends DefaultMQProducer {
     @Override
     public void shutdown() {
         super.shutdown();
+        // 摧毁事务环境（Broker 回查请求处理线程池）
         this.defaultMQProducerImpl.destroyTransactionEnv();
     }
 
+    /**
+     * 发送事务消息
+     *
+     * @param msg Transactional message to send.
+     *            需要发送的事务消息
+     * @param arg Argument used along with local transaction executor.
+     *            本地事务执行器的参数
+     * @return 事务消息发送结果
+     * @throws MQClientException
+     */
     @Override
     public TransactionSendResult sendMessageInTransaction(final Message msg,
         final Object arg) throws MQClientException {

@@ -19,6 +19,9 @@ package org.apache.rocketmq.broker.transaction.queue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 事务操作消息批量提交上下文，每个对应一个事务半消息队列。默认情况下事务半消息队列和事务操作消息队列都只有 1 个。
+ */
 public class MessageQueueOpContext {
     private AtomicInteger totalSize = new AtomicInteger(0);
     private volatile long lastWriteTimestamp;

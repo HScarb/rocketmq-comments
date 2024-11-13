@@ -274,6 +274,9 @@ public class BrokerController {
     protected FileWatchService fileWatchService;
     protected TransactionalMessageCheckService transactionalMessageCheckService;
     protected TransactionalMessageService transactionalMessageService;
+    /**
+     * 事务半消息回查处理类，Broker 唯一
+     */
     protected AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     protected Map<Class, AccessValidator> accessValidatorMap = new HashMap<>();
     protected volatile boolean shutdown = false;
@@ -1005,9 +1008,14 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 初始化事务消息相关处理类
+     */
     private void initialTransaction() {
+        // 加载自定义事务消息处理类
         this.transactionalMessageService = ServiceProvider.loadClass(TransactionalMessageService.class);
         if (null == this.transactionalMessageService) {
+            // 构造默认事务消息处理类
             this.transactionalMessageService = new TransactionalMessageServiceImpl(
                 new TransactionalMessageBridge(this, this.getMessageStore()));
             LOG.warn("Load default transaction message hook service: {}",

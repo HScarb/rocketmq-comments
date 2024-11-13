@@ -319,6 +319,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
 
         // Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
+        // 尝试获取事务消息标识
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         boolean sendTransactionPrepareMessage;
         if (Boolean.parseBoolean(traFlag)
@@ -330,6 +331,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                         + "] sending transaction message is forbidden");
                 return response;
             }
+            // 是事务消息
             sendTransactionPrepareMessage = true;
         } else {
             sendTransactionPrepareMessage = false;
@@ -337,11 +339,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         long beginTimeMillis = this.brokerController.getMessageStore().now();
 
+        // 异步存储消息
         if (brokerController.getBrokerConfig().isAsyncSendEnable()) {
             CompletableFuture<PutMessageResult> asyncPutMessageFuture;
             if (sendTransactionPrepareMessage) {
+                // 如果是事务消息，构造事务半消息并存储
                 asyncPutMessageFuture = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);
             } else {
+                // 普通消息存储
                 asyncPutMessageFuture = this.brokerController.getMessageStore().asyncPutMessage(msgInner);
             }
 
@@ -364,11 +369,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             }, this.brokerController.getPutMessageFutureExecutor());
             // Returns null to release the send message thread
             return null;
+        // 同步存储消息
         } else {
             PutMessageResult putMessageResult = null;
             if (sendTransactionPrepareMessage) {
+                // 如果是事务消息，构造事务半消息并存储
                 putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
             } else {
+                // 普通消息存储
                 putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
             }
             handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext, ctx, queueIdInt, beginTimeMillis, mappingContext, BrokerMetricsManager.getMessageType(requestHeader));

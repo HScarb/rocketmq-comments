@@ -37,6 +37,10 @@ public class EndTransactionRequestHeader extends RpcRequestHeader {
     private String producerGroup;
     @CFNotNull
     private Long tranStateTableOffset;
+
+    /**
+     * 事务半消息的物理偏移量
+     */
     @CFNotNull
     private Long commitLogOffset;
     @CFNotNull

@@ -63,6 +63,15 @@ public class Broker2Client {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 检查客户端事务执行状态
+     *
+     * @param group 生产者组
+     * @param channel Netty Channel
+     * @param requestHeader
+     * @param messageExt 事务半消息（复原 Topic 和 Queue）
+     * @throws Exception
+     */
     public void checkProducerTransactionState(
         final String group,
         final Channel channel,

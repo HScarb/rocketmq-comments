@@ -32,6 +32,9 @@ import org.apache.rocketmq.store.PutMessageStatus;
 
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Broker 端事务消息回查执行器实现类
+ */
 public class DefaultTransactionalMessageCheckListener extends AbstractTransactionalMessageCheckListener {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
@@ -39,6 +42,10 @@ public class DefaultTransactionalMessageCheckListener extends AbstractTransactio
         super();
     }
 
+    /**
+     * 丢弃事务半消息，发送到特殊的内部 Topic：TRANS_CHECK_MAXTIME_TOPIC
+     * @param msgExt Message to be discarded.
+     */
     @Override
     public void resolveDiscardMsg(MessageExt msgExt) {
         log.error("MsgExt:{} has been checked too many times, so discard it by moving it to system topic TRANS_CHECK_MAXTIME_TOPIC", msgExt);

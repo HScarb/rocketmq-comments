@@ -101,6 +101,9 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
         return false;
     }
 
+    /**
+     * 处理 Broker 发来的事务回查请求，发送本地事务执行状态到 Broker
+     */
     public RemotingCommand checkTransactionState(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final CheckTransactionStateRequestHeader requestHeader =
@@ -121,6 +124,7 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
                 MQProducerInner producer = this.mqClientFactory.selectProducer(group);
                 if (producer != null) {
                     final String addr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
+                    // 检查本地事务执行状态，发送到 Broker
                     producer.checkTransactionState(addr, messageExt, requestHeader);
                 } else {
                     logger.debug("checkTransactionState, pick producer by group[{}] failed", group);

@@ -60,6 +60,9 @@ import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_TOP
 public class TransactionalMessageBridge {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
+    /**
+     * 事务操作消息队列映射缓存，key 为事务半消息队列 ID，value 为事务操作消息队列
+     */
     private final ConcurrentHashMap<Integer, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
     private final BrokerController brokerController;
     private final MessageStore store;
@@ -216,16 +219,21 @@ public class TransactionalMessageBridge {
         return store.asyncPutMessage(parseHalfMessageInner(messageInner));
     }
 
+    /**
+     * 准备事务半消息，将原消息的 Topic 和 QueueId 保存到消息属性中，然后将消息的 Topic 设置为 RMQ_SYS_TRANS_HALF_TOPIC 的 0 队列
+     */
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
         String uniqId = msgInner.getUserProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
         if (uniqId != null && !uniqId.isEmpty()) {
             MessageAccessor.putProperty(msgInner, TransactionalMessageUtil.TRANSACTION_ID, uniqId);
         }
+        // 将原始消息的 Topic 和 QueueId 保存到事务半消息的属性中
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
             String.valueOf(msgInner.getQueueId()));
         msgInner.setSysFlag(
             MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), MessageSysFlag.TRANSACTION_NOT_TYPE));
+        // 设置事务半消息的 Topic 为 RMQ_SYS_TRANS_HALF_TOPIC
         msgInner.setTopic(TransactionalMessageUtil.buildHalfTopic());
         msgInner.setQueueId(0);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
@@ -317,6 +325,13 @@ public class TransactionalMessageBridge {
         return topicConfig;
     }
 
+    /**
+     * 将事务操作消息写入存储
+     *
+     * @param queueId 事务半消息队列 ID
+     * @param message 事务操作消息
+     * @return 是否写入成功
+     */
     public boolean writeOp(Integer queueId,Message message) {
         MessageQueue opQueue = opQueueMap.get(queueId);
         if (opQueue == null) {
@@ -327,6 +342,7 @@ public class TransactionalMessageBridge {
             }
         }
 
+        // 事务操作消息写入存储
         PutMessageResult result = putMessageReturnResult(makeOpMessageInner(message, opQueue));
         if (result != null && result.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
             return true;
@@ -335,6 +351,13 @@ public class TransactionalMessageBridge {
         return false;
     }
 
+    /**
+     * 根据事务半消息队列 ID 和 BrokerName 获取事务操作消息队列
+     *
+     * @param queueId 事务半消息队列 ID
+     * @param brokerName BrokerName
+     * @return 事务操作消息队列
+     */
     private MessageQueue getOpQueueByHalf(Integer queueId, String brokerName) {
         MessageQueue opQueue = new MessageQueue();
         opQueue.setTopic(TransactionalMessageUtil.buildOpTopic());
