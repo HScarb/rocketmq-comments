@@ -131,7 +131,7 @@ public class DLedgerRoleChangeHandler implements DLedgerLeaderElector.RoleChange
             }
             // 设置主从同步的主节点地址为空，该值从 Broker 向 NameServer 发送的心跳包响应结果中获取，每 10s 一次
             this.brokerController.getSlaveSynchronize().setMasterAddr(null);
-            // 开启元数据同步定时任务，每 3s 同步一次
+            // 开启元数据同步定时任务，每 10s 同步一次
             slaveSyncFuture = this.brokerController.getScheduledExecutorService().scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
@@ -176,7 +176,7 @@ public class DLedgerRoleChangeHandler implements DLedgerLeaderElector.RoleChange
         // 关闭延迟消息服务和事务消息回查服务
         this.brokerController.changeSpecialServiceStatus(false);
 
-        // 启动主从元数据同步处理器
+        // 启动 DLedger 元数据同步处理器，每 10s 从 Leader 同步一次元数据
         //handle the slave synchronise
         handleSlaveSynchronize(BrokerRole.SLAVE);
 

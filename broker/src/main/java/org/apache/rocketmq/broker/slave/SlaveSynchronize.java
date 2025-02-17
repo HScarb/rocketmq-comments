@@ -60,7 +60,7 @@ public class SlaveSynchronize {
     }
 
     /**
-     * 同步所有元数据
+     * 从节点从主节点同步所有元数据
      */
     public void syncAll() {
         this.syncTopicConfig();
