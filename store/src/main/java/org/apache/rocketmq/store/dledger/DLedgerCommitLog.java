@@ -135,9 +135,11 @@ public class DLedgerCommitLog extends CommitLog {
         dLedgerServer = new DLedgerServer(dLedgerConfig);
         dLedgerFileStore = (DLedgerMmapFileStore) dLedgerServer.getdLedgerStore();
         // 添加消息 Append 事件处理钩子
-        // 如果开启了主从切换（DLedger 模式），消息 Append 时返回的物理便宜了不是 DLedger 日志条目的起始位置，而是其 body 的起始位置
+        // 如果开启了主从切换（DLedger 模式），消息的物理偏移量就不是 DLedger 日志条目的起始位置，而是其 body 的起始位置
         DLedgerMmapFileStore.AppendHook appendHook = (entry, buffer, bodyOffset) -> {
+            // DLedger 模式消息条目在整个 DLedger 条目中的偏移量
             assert bodyOffset == DLedgerEntry.BODY_OFFSET;
+            // 放置物理偏移量到正确的位置
             buffer.position(buffer.position() + bodyOffset + MessageDecoder.PHY_POS_POSITION);
             buffer.putLong(entry.getPos() + bodyOffset);
         };
@@ -325,14 +327,23 @@ public class DLedgerCommitLog extends CommitLog {
         return false;
     }
 
+    /**
+     * Broker 启动时恢复数据文件到内存
+     * @param maxPhyOffsetOfConsumeQueue
+     * @throws RocksDBException
+     */
     private void dledgerRecoverNormally(long maxPhyOffsetOfConsumeQueue) throws RocksDBException {
-        // 逐一构建对应的 MmapFile，初始化三个文件指针：wrotePosition, flushedPosition, committedPosition
+        // 逐一构建对应的 MmapFile 列表，初始化三个文件指针：wrotePosition, flushedPosition, committedPosition
         dLedgerFileStore.load();
         if (!dLedgerFileList.getMappedFiles().isEmpty()) {
-            // 已存在 DLedger 数据文件，只需要恢复 DLedger 相关的数据文件。恢复 fileStore 管辖的 MMapFile
+            // 已存在 DLedger 数据文件，只需要恢复 DLedger 相关的数据文件。
+            // 从磁盘文件恢复 fileStore 管辖的 MMapFile 对象
             dLedgerFileStore.recover();
+            // 设置 DLedgerCommitLog 开始的偏移量为 DLedger 中物理文件的最小偏移量
             dividedCommitlogOffset = dLedgerFileList.getFirstMappedFile().getFileFromOffset();
             // 如果存在旧的 CommitLog 文件，则禁止删除 DLedger 文件
+            // 因为删除 DLedger 文件的话，maxCommitlogPhyOffset 到 dividedCommitlogOffset 之间会有空洞，无法连续访问
+            // 使用 DLedger 之前可以选择将 CommitLog 彻底删除，避免 DLedger 文件无法删除
             MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
             if (mappedFile != null) {
                 disableDeleteDledger();
@@ -346,7 +357,7 @@ public class DLedgerCommitLog extends CommitLog {
             }
             return;
         }
-        // 开启 DLedger 的首次启动，走下面流程
+        // 开启 DLedger 的首次启动（还没有生成 DLedger 相关数据文件），走下面流程
         //Indicate that, it is the first time to load mixed commitlog, need to recover the old commitlog
         isInrecoveringOldCommitlog = true;
         // 恢复旧的 CommitLog 文件
@@ -444,7 +455,7 @@ public class DLedgerCommitLog extends CommitLog {
         if (mappedFile == null) {
             return;
         }
-        // 存在旧的 CommitLog 文件，需要将文件剩余部分全部填充，不再接收新的数据。新的数据全部写入 DLedgerCommitLog
+        // 存在旧的 CommitLog 文件，需要将 CommitLog 文件剩余部分全部填充，不再接收新的数据。新的数据全部写入 DLedgerCommitLog
         ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
         // 获取 CommitLog 的最后一个文件的最后写入点，尝试写入魔数。切换 DLedger 第一次启动时需要写入。
         byteBuffer.position(mappedFile.getWrotePosition());
@@ -641,7 +652,7 @@ public class DLedgerCommitLog extends CommitLog {
                 request.setGroup(dLedgerConfig.getGroup());
                 request.setRemoteId(dLedgerServer.getMemberState().getSelfId());
                 request.setBody(encodeResult.getData());
-                // 调用 DLedger 服务追加日志条目
+                // 调用 DLedger 服务追加日志条目。其会将消息转发到从节点，超过半数节点成功写入后才会返回写入成功
                 dledgerFuture = (AppendFuture<AppendEntryResponse>) dLedgerServer.handleAppend(request);
                 if (dledgerFuture.getPos() == -1) {
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.OS_PAGE_CACHE_BUSY, new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR)));
