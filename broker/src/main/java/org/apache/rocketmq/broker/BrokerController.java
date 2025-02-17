@@ -813,6 +813,7 @@ public class BrokerController {
                 DLedgerRoleChangeHandler roleChangeHandler =
                     new DLedgerRoleChangeHandler(this, defaultMessageStore);
                 // 如果开启主从切换（DLedger 模式），为 DLedgerLeaderElector 选主器添加角色变更监听器
+                // 当发生主从切换时触发该监听器
                 ((DLedgerCommitLog) defaultMessageStore.getCommitLog())
                     .getdLedgerServer().getDLedgerLeaderElector().addRoleChangeHandler(roleChangeHandler);
             }
